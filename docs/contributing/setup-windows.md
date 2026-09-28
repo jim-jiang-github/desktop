@@ -324,11 +324,26 @@ Windows x64 installers in `jim-jiang-github/desktop`. It uses the Node version i
 or deployment infrastructure.
 
 Commit and push the workflow and all Custom source changes to your fork. Enable
-Actions in the fork if GitHub asks you to do so. To use **Actions > Build and
-release Custom (Windows) > Run workflow**, the workflow must also exist on the
-fork's default branch (`development`); select the branch containing your Custom
-changes when running it. Manual runs only build: download `custom-windows-x64`
-from the run's artifacts within 14 days.
+Actions in the fork if GitHub asks you to do so. Custom runs **only on a
+`custom-v*` tag push**: there is no manual **Run workflow** entry, branch-push
+build, or pull-request build. The build still checks types, lint, and packaging
+tests before producing installers.
+
+Only `custom-release.yml` remains in `.github/workflows`. The original upstream
+CI, code scanning, release helpers, and triage workflows (including the agentic
+triage source and generated YAML) are retained unchanged in
+`.github/upstream-workflows` for reference and upstream comparisons. GitHub does
+not execute workflows from that directory. Do not copy them back or regenerate
+the triage workflow in `.github/workflows` unless you intend to enable them.
+This fork layout does not change the official `desktop/desktop` repository.
+
+Local edits do not change the remote Actions configuration until committed and
+pushed. To stop existing non-Custom runs immediately, a repository administrator
+must disable those workflows and cancel their queued or running executions in
+the fork's Actions UI or API. Keep **Build and release Custom (Windows)** enabled
+and do not cancel its tag builds. Disabling a workflow does not by itself cancel
+an existing run; moving its source also does not stop an already-running run.
+Do not delete historical runs, releases, or tags.
 
 To create a release, push a tag matching **exactly** `custom-v` followed by the
 version in `app/package.json`, on the commit you want to ship. For example, for
@@ -347,6 +362,13 @@ source and, only after a successful build and checksum verification,
 `SHA256SUMS.txt`. Versions with a prerelease identifier (such as `-alpha1`,
 `-beta2`, or `-rc1`) are published as public prereleases; stable versions are
 published as normal releases. No draft or manual publish step is required.
+Pushing a tag is not the same as publishing a Release: while dependency
+installation, validation, or packaging is still running, the tag can exist
+without a Release or installers. Check the Custom workflow run (not another
+workflow's commit status). A failed build prevents publication; after the
+release job succeeds, the tag's Release must list the EXE, MSI, and checksums.
+The intermediate `custom-windows-x64` Actions artifact is retained for 14 days
+and is separate from the public Release assets.
 Review the source and version before pushing the tag. The job uses the
 automatically supplied `GITHUB_TOKEN` with `contents: write` only for the release
 job; no personal access token or custom secret is needed. Repository or

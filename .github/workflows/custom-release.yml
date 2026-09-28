@@ -1,7 +1,6 @@
 name: Build and release Custom (Windows)
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - 'custom-v*'
