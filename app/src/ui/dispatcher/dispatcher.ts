@@ -1672,7 +1672,17 @@ export class Dispatcher {
     return this.appStore._runCustomCommand(repository, id, scope)
   }
 
-  /** Start the explicitly selected command and stream its output to its dialog. */
+  /** Restore the existing task without executing it again. */
+  public showCustomCommandTask(): Promise<void> {
+    return this.appStore._showCustomCommandTask()
+  }
+
+  /** Clear a finished command's result and output without affecting running tasks. */
+  public dismissCustomCommandResult(): void {
+    this.appStore._dismissCustomCommandResult()
+  }
+
+  /** Start the explicitly selected command and stream its output to its owner. */
   public executeCustomCommand(
     repository: Repository,
     command: ICustomCommand,

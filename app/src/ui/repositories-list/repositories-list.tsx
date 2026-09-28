@@ -31,6 +31,9 @@ import { IAheadBehind } from '../../models/branch'
 const BlankSlateImage = encodePathAsUrl(__dirname, 'static/empty-no-repo.svg')
 
 interface IRepositoriesListProps {
+  readonly customCommandTask?:
+    | import('../../lib/stores/custom-command-store').ICustomCommandTask
+    | null
   readonly selectedRepository: Repositoryish | null
   readonly repositories: ReadonlyArray<Repositoryish>
   readonly recentRepositories: ReadonlyArray<number>
@@ -157,6 +160,7 @@ export class RepositoriesList extends React.Component<
     const repository = item.repository
     return (
       <RepositoryListItem
+        customCommandTask={this.props.customCommandTask}
         key={repository.id}
         repository={repository}
         needsDisambiguation={item.needsDisambiguation}
@@ -352,6 +356,7 @@ export class RepositoriesList extends React.Component<
           renderNoItems={this.renderNoItems}
           groups={groups}
           invalidationProps={{
+            customCommandTask: this.props.customCommandTask,
             repositories: this.props.repositories,
             filterText: this.props.filterText,
           }}

@@ -17,7 +17,7 @@ export type CustomCommandResult =
   | { readonly kind: 'exited'; readonly exitCode: number }
   | { readonly kind: 'cancelled' }
 
-/** A running command owned by the execution dialog. */
+/** A running command owned by the application's command store. */
 export interface ICustomCommandExecution {
   /** Resolves on exit; rejects if the process could not start or was lost. */
   readonly result: Promise<CustomCommandResult>

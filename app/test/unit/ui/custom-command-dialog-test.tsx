@@ -17,6 +17,7 @@ import {
   serializeCustomCommands,
 } from '../../../src/lib/custom-command'
 import { Repository } from '../../../src/models/repository'
+import { CustomCommandStore } from '../../../src/lib/stores/custom-command-store'
 import { CustomCommandDialog } from '../../../src/ui/custom-command/custom-command-dialog'
 import { DialogStackContext } from '../../../src/ui/dialog/dialog'
 import { fireEvent, render, screen, waitFor } from '../../helpers/ui/render'
@@ -474,13 +475,21 @@ describe('custom command dialog', () => {
       ),
     }
     let dismissed = false
+    const store = new CustomCommandStore(() => {})
+    store.start(repository, initialCommands[0], expectedDurationMs, onOutput =>
+      dispatcher.executeCustomCommand(repository, initialCommands[0], onOutput)
+    )
+    t.after(async () => {
+      resolveResult?.({ kind: 'cancelled' })
+      await result.then(
+        () => {},
+        () => {}
+      )
+    })
     const view = render(
       <DialogStackContext.Provider value={{ isTopMost: true }}>
         <CustomCommandRunDialog
-          repository={repository}
-          command={initialCommands[0]}
-          expectedDurationMs={expectedDurationMs}
-          dispatcher={dispatcher}
+          store={store}
           onDismissed={() => {
             dismissed = true
           }}
@@ -493,6 +502,7 @@ describe('custom command dialog', () => {
       stop,
       write,
       dispatcher,
+      store,
       isDismissed: () => dismissed,
       finish: (value: CustomCommandResult) => {
         assert.ok(resolveResult)
@@ -519,7 +529,7 @@ describe('custom command dialog', () => {
     const form = run.view.container.querySelector('form')
     assert.ok(form)
     fireEvent.submit(form)
-    assert.equal(run.isDismissed(), false)
+    assert.equal(run.isDismissed(), true)
     run.finish({ kind: 'exited', exitCode: 0 })
     await waitFor(() =>
       assert.match(
@@ -608,10 +618,10 @@ describe('custom command dialog', () => {
     setupExecution(t, null, new Error('PowerShell is unavailable'))
     assert.equal(
       screen.getByRole('status').textContent,
-      'Could not run command'
+      'PowerShell is unavailable'
     )
     assert.match(
-      screen.getByRole('alert').textContent ?? '',
+      screen.getByRole('status').textContent ?? '',
       /PowerShell is unavailable/
     )
     assert.equal(screen.queryByRole('progressbar'), null)
@@ -621,12 +631,9 @@ describe('custom command dialog', () => {
     const run = setupExecution(t)
     run.fail(new Error('ENOENT'))
     await waitFor(() =>
-      assert.match(screen.getByRole('alert').textContent ?? '', /ENOENT/)
+      assert.match(screen.getByRole('status').textContent ?? '', /ENOENT/)
     )
-    assert.equal(
-      screen.getByRole('status').textContent,
-      'Could not run command'
-    )
+    assert.equal(screen.getByRole('status').textContent, 'ENOENT')
   })
 
   it('prevents app closing while running and releases the guard on completion', async t => {
@@ -651,10 +658,24 @@ describe('custom command dialog', () => {
     assert.equal(finishedClosing.defaultPrevented, false)
   })
 
-  it('stops its owned process when the execution dialog is unmounted', async t => {
+  it('keeps running and replays background output when the execution dialog is restored', async t => {
     const run = setupExecution(t)
     run.view.unmount()
     unmount = undefined
-    assert.equal(run.stop.mock.callCount(), 1)
+    assert.equal(run.stop.mock.callCount(), 0)
+    run.output(Buffer.from('output while hidden'))
+    const restored = render(
+      <CustomCommandRunDialog store={run.store} onDismissed={() => {}} />
+    )
+    unmount = restored.unmount
+    assert.equal(run.dispatcher.executeCustomCommand.mock.callCount(), 1)
+    const replay = run.write.mock.calls.at(-1)?.arguments[0]
+    assert.ok(replay)
+    assert.equal(replay.toString(), 'output while hidden')
+    const closing = new window.Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(closing)
+    assert.equal(closing.defaultPrevented, true)
+    run.finish({ kind: 'exited', exitCode: 0 })
+    await waitFor(() => assert.equal(run.store.snapshot?.status, 'succeeded'))
   })
 })

@@ -1,5 +1,114 @@
 @import '../../mixins';
 
+.repository-command-progress > button,
+.repository-list-item {
+  position: relative;
+  isolation: isolate;
+
+  > .custom-command-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    height: 100%;
+    background: currentColor;
+    opacity: 0.12;
+    z-index: -1;
+    pointer-events: none;
+
+    &[data-status='succeeded'] {
+      opacity: 0.08;
+    }
+
+    &[data-indeterminate='true'] {
+      animation: custom-command-activity 1.8s ease-in-out infinite alternate;
+      @media (prefers-reduced-motion: reduce) {
+        animation: none;
+      }
+    }
+  }
+}
+
+.repository-list-item {
+  height: 100%;
+}
+
+@keyframes custom-command-activity {
+  from {
+    left: 0;
+  }
+  to {
+    left: 65%;
+  }
+}
+
+.custom-command-menu-container {
+  position: relative;
+  display: flex;
+  flex: 0 0 230px;
+  min-width: 0;
+  border-left: 1px solid var(--toolbar-border-color);
+
+  .custom-command-button {
+    flex: 1;
+    min-width: 0;
+
+    > button {
+      isolation: isolate;
+    }
+  }
+
+  .custom-command-task-pulse {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--text-link-color);
+    opacity: 0;
+    animation: custom-command-task-attention 750ms ease-in-out 3;
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+      opacity: 0.12;
+    }
+  }
+}
+
+.custom-command-task-hint {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + var(--spacing-half));
+  right: var(--spacing);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing);
+  width: 300px;
+  max-width: calc(100vw - 2 * var(--spacing));
+  padding: var(--spacing);
+  color: var(--text-color);
+  background: var(--box-background-color);
+  border: var(--base-border);
+  border-radius: var(--border-radius);
+  box-shadow: 0 3px 12px #0003;
+
+  > span {
+    flex: 1;
+    min-width: 0;
+  }
+
+  > button {
+    flex-shrink: 0;
+    padding: 0 var(--spacing-half);
+  }
+}
+
+@keyframes custom-command-task-attention {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
 /** A React component holding the main application toolbar component. */
 #desktop-app-toolbar {
   height: var(--toolbar-height);
@@ -31,6 +140,12 @@
       // enableResizingToolbarButtons() is removed.
       flex-grow: 1;
     }
+  }
+
+  &:has(.custom-command-menu-container) > .resizable-component {
+    flex-shrink: 1;
+    // Saved inline minimum widths must not push the commands menu off-screen.
+    min-width: 0 !important;
   }
 
   .toolbar-button {

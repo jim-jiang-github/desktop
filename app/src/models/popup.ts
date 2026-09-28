@@ -138,9 +138,6 @@ interface IBasePopup {
 export type PopupDetail =
   | {
       type: PopupType.RunCustomCommand
-      repository: Repository
-      command: ICustomCommand
-      expectedDurationMs: number | null
     }
   | {
       type: PopupType.CustomCommand

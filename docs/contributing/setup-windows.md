@@ -183,8 +183,23 @@ directly in an in-app execution panel, without opening an external console.
 
 The working directory is the selected checkout. The panel streams output and
 errors and reports
-success, a nonzero exit code, or a stopped command. It retains the latest 2,000
-terminal scrollback lines until you close it.
+success, a nonzero exit code, or a stopped command. Choose **Run in background**
+to hide the panel and keep using Desktop. Open the existing **Custom commands**
+menu and choose **Show command output** to restore the same task from any
+repository, with the original working directory and script. The menu retains
+this entry while running and after completion; there is no separate task bar
+or external restore button. The button's tooltip includes the task name, status
+and original working directory.
+When hiding the panel or when a background task finishes, **Custom commands** briefly
+highlights three times and displays a short hint. Reduced motion uses a static
+highlight instead. The hint disappears automatically or can be closed with its X;
+closing a hint never stops the command or clears its logs. For a finished task,
+choose **Custom commands > Dismiss command result** to clear its output and progress.
+Opening and closing the panel does not restart or stop the process.
+The terminal retains 2,000 scrollback lines; background replay retains at most
+2,000 lines and 1 MiB of UTF-8 output. Older output beyond those limits is discarded.
+The latest result and logs remain available until another command starts or
+Desktop exits; logs are not persisted across application restarts.
 
 The first run shows an indeterminate progress animation. After a successful run,
 its duration is remembered locally for that command and checkout. Later runs
@@ -195,8 +210,19 @@ This is a time estimate, not measured build/task progress. Editing the command
 text or changing checkout requires learning a new duration. Failed or stopped
 runs do not replace the last successful duration.
 
+The current repository title and the task's repository-list row fill from left
+to right using the same estimate as the execution panel. Unknown durations
+animate instead (without animation when reduced motion is enabled).
+Switching repositories does not move the task or its working directory: only
+the original checkout's title shows progress. When switching worktrees, the
+owning repository row retains progress; its tooltip and the command menu button's
+tooltip identify the original working directory. Completion, failure or cancellation
+produces a temporary hint without opening a dialog or stealing focus.
+Only one custom command can run at a time.
+
 Choose **Stop command** to stop the command and its child processes. Stop it
-before closing the panel or the app. Windows PowerShell runs hidden, without a
+before exiting the app; Desktop blocks normal exit while the command is running,
+including when its panel is hidden. Windows PowerShell runs hidden, without a
 profile and in non-interactive mode; commands requiring terminal input are not
 supported. PowerShell errors stop execution, and native command exit codes are
 propagated to the panel.

@@ -1,4 +1,9 @@
 import * as React from 'react'
+import {
+  ICustomCommandTask,
+  commandBelongsToRepository,
+} from '../../lib/stores/custom-command-store'
+import { CommandProgressBackground } from '../custom-command/command-progress-background'
 
 import { Repository } from '../../models/repository'
 import { Octicon, iconForRepository } from '../octicons'
@@ -14,6 +19,7 @@ import { enableAccessibleListToolTips } from '../../lib/feature-flag'
 import { TooltippedContent } from '../lib/tooltipped-content'
 
 interface IRepositoryListItemProps {
+  readonly customCommandTask?: ICustomCommandTask | null
   readonly repository: Repositoryish
 
   /** Does the repository need to be disambiguated in the list? */
@@ -41,6 +47,10 @@ export class RepositoryListItem extends React.Component<
     const gitHubRepo =
       repository instanceof Repository ? repository.gitHubRepository : null
     const hasChanges = this.props.changedFilesCount > 0
+    const task = this.props.customCommandTask
+    const ownsTask =
+      repository.id === task?.repository.id ||
+      commandBelongsToRepository(task, repository)
 
     const alias: string | null =
       repository instanceof Repository ? repository.alias : null
@@ -56,6 +66,7 @@ export class RepositoryListItem extends React.Component<
 
     return (
       <div className="repository-list-item" ref={this.listItemRef}>
+        <CommandProgressBackground task={ownsTask ? task : null} />
         <Tooltip
           target={this.listItemRef}
           disabled={enableAccessibleListToolTips()}
@@ -98,6 +109,12 @@ export class RepositoryListItem extends React.Component<
           {alias && <> ({alias})</>}
         </div>
         <div>{repo.path}</div>
+        {this.props.customCommandTask?.repository.id === repo.id && (
+          <div>
+            Command: {this.props.customCommandTask.message} —{' '}
+            {this.props.customCommandTask.repository.path}
+          </div>
+        )}
       </>
     )
   }
@@ -109,6 +126,10 @@ export class RepositoryListItem extends React.Component<
     ) {
       return (
         nextProps.repository.id !== this.props.repository.id ||
+        nextProps.repository !== this.props.repository ||
+        nextProps.customCommandTask !== this.props.customCommandTask ||
+        nextProps.changedFilesCount !== this.props.changedFilesCount ||
+        nextProps.aheadBehind !== this.props.aheadBehind ||
         nextProps.matches !== this.props.matches
       )
     } else {

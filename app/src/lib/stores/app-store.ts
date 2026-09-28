@@ -1,6 +1,10 @@
 import * as Path from 'path'
 import { readFile, writeFile } from 'fs/promises'
 import {
+  CustomCommandStore,
+  isCustomCommandActive,
+} from './custom-command-store'
+import {
   CustomCommandScope,
   ICustomCommand,
   getCustomCommands,
@@ -609,6 +613,10 @@ const selectedCopilotModelsByAccountKey = 'selected-copilot-models-by-account'
 export const showChangesFilterDefault = true
 
 export class AppStore extends TypedBaseStore<IAppState> {
+  /** The one application-owned custom command, independent of popup lifetime. */
+  public readonly customCommandStore = new CustomCommandStore(() =>
+    this.emitUpdate()
+  )
   private readonly gitStoreCache: GitStoreCache
 
   private accounts: ReadonlyArray<Account> = new Array<Account>()
@@ -1296,6 +1304,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     return {
       accounts: this.accounts,
+      customCommandTask: this.customCommandStore.snapshot,
       repositories,
       recentRepositories: this.recentRepositories,
       localRepositoryStateLookup: this.localRepositoryStateLookup,
@@ -7758,6 +7767,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
     scope: CustomCommandScope
   ): Promise<void> {
     try {
+      if (isCustomCommandActive(this.customCommandStore.snapshot)) {
+        await this._showCustomCommandTask()
+        return
+      }
       const command = getCustomCommands(
         localStorage,
         repository.path,
@@ -7768,16 +7781,33 @@ export class AppStore extends TypedBaseStore<IAppState> {
           'This custom command no longer exists. Open Configure commands to update the list.'
         )
       }
-      await this._showPopup({
-        type: PopupType.RunCustomCommand,
+      this.customCommandStore.start(
         repository,
         command,
-        expectedDurationMs: getCustomCommandDuration(
-          localStorage,
-          repository.path,
-          command
-        ),
-      })
+        getCustomCommandDuration(localStorage, repository.path, command),
+        onOutput => this._executeCustomCommand(repository, command, onOutput)
+      )
+      await this._showCustomCommandTask()
+    } catch (error) {
+      this.emitError(error)
+    }
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
+  public async _showCustomCommandTask() {
+    if (
+      this.customCommandStore.snapshot !== null &&
+      this.popupManager.currentPopup?.type !== PopupType.RunCustomCommand
+    ) {
+      await this._showPopup({ type: PopupType.RunCustomCommand })
+    }
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
+  public _dismissCustomCommandResult() {
+    try {
+      this.customCommandStore.dismissResult()
+      this._closePopup(PopupType.RunCustomCommand)
     } catch (error) {
       this.emitError(error)
     }
