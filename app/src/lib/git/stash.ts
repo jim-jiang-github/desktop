@@ -5,6 +5,7 @@ import {
   IStashEntry,
   StashedChangesLoadStates,
   StashedFileChanges,
+  IRepositoryStashEntry,
 } from '../../models/stash-entry'
 import {
   WorkingDirectoryFileChange,
@@ -15,6 +16,7 @@ import { stageFiles } from './update-index'
 import { Branch } from '../../models/branch'
 import { createLogParser } from './git-delimiter-parser'
 import { coerceToString } from './coerce-to-string'
+import { deleteStashEntry } from './delete-stash-entry'
 
 export const DesktopStashEntryMarker = '!!GitHub_Desktop'
 
@@ -27,6 +29,7 @@ export const DesktopStashEntryMarker = '!!GitHub_Desktop'
 const desktopStashEntryMessageRe = /!!GitHub_Desktop<(.+)>$/
 
 type StashResult = {
+  readonly allEntries: ReadonlyArray<IRepositoryStashEntry>
   /** The stash entries created by Desktop */
   readonly desktopEntries: ReadonlyArray<IStashEntry>
 
@@ -38,9 +41,8 @@ type StashResult = {
 }
 
 /**
- * Get the list of stash entries created by Desktop in the current repository
- * using the default ordering of refs (which is LIFO ordering),
- * as well as the total amount of stash entries.
+ * Get all stash entries in newest-first order, together with the Desktop-only
+ * subset used by automatic branch stashing.
  */
 export async function getStashes(repository: Repository): Promise<StashResult> {
   const { formatArgs, parse } = createLogParser({
@@ -49,6 +51,7 @@ export async function getStashes(repository: Repository): Promise<StashResult> {
     message: '%gs',
     tree: '%T',
     parents: '%P',
+    createdAt: '%ct',
   })
 
   const result = await git(
@@ -58,33 +61,121 @@ export async function getStashes(repository: Repository): Promise<StashResult> {
     { successExitCodes: new Set([0, 128]) }
   )
 
-  // There's no refs/stashes reflog in the repository or it's not
-  // even a repository. In either case we don't care
   if (result.exitCode === 128) {
-    return { desktopEntries: [], stashEntryCount: 0 }
+    // Missing refs/stash is normal; other repository/read errors are not.
+    const ref = await git(
+      ['rev-parse', '--verify', '--quiet', 'refs/stash'],
+      repository.path,
+      'verifyStashReference',
+      { successExitCodes: new Set([0, 1]) }
+    )
+    if (ref.exitCode !== 1) {
+      throw new Error(`Unable to read the stash reflog: ${result.stderr}`)
+    }
+    return { desktopEntries: [], allEntries: [], stashEntryCount: 0 }
   }
 
   const desktopEntries: Array<IStashEntry> = []
+  const allEntries: Array<IRepositoryStashEntry> = []
   const files: StashedFileChanges = { kind: StashedChangesLoadStates.NotLoaded }
 
   const entries = parse(result.stdout)
 
-  for (const { name, message, stashSha, tree, parents } of entries) {
+  for (const { name, message, stashSha, tree, parents, createdAt } of entries) {
+    if (stashSha.length === 0) {
+      continue
+    }
     const branchName = extractBranchFromMessage(message)
+    const entry: IRepositoryStashEntry = {
+      name,
+      stashSha,
+      branchName:
+        branchName ?? /^(?:WIP on|On) (.+?): /.exec(message)?.[1] ?? '',
+      message,
+      createdAt: Number(createdAt) * 1000,
+      isDesktopStash: branchName !== null,
+      tree,
+      parents: parents.length > 0 ? parents.split(' ') : [],
+      files,
+    }
+    allEntries.push(entry)
 
     if (branchName !== null) {
-      desktopEntries.push({
-        name,
-        stashSha,
-        branchName,
-        tree,
-        parents: parents.length > 0 ? parents.split(' ') : [],
-        files,
-      })
+      desktopEntries.push(entry)
     }
   }
 
-  return { desktopEntries, stashEntryCount: entries.length - 1 }
+  return { desktopEntries, allEntries, stashEntryCount: allEntries.length }
+}
+
+/** Resolve a selected stash afresh. Never fall back to another stash's index. */
+async function requireRepositoryStash(
+  repository: Repository,
+  stashSha: string
+) {
+  const { allEntries } = await getStashes(repository)
+  const matches = allEntries.filter(entry => entry.stashSha === stashSha)
+  if (matches.length !== 1) {
+    throw new Error(
+      matches.length === 0
+        ? 'This stash no longer exists. Refresh the stash list.'
+        : 'This stash commit occurs more than once. Manage these duplicate entries with Git.'
+    )
+  }
+  return matches[0]
+}
+
+/** Restore by immutable commit ID, retaining the stash on success and on conflict. */
+export async function applyRepositoryStash(
+  repository: Repository,
+  stashSha: string
+) {
+  await requireRepositoryStash(repository, stashSha)
+  await git(
+    ['stash', 'apply', '--quiet', stashSha],
+    repository.path,
+    'applyRepositoryStash'
+  )
+}
+
+/** Drop only the selected entry under Git's shared reference lock. */
+export async function dropRepositoryStash(
+  repository: Repository,
+  stashSha: string
+) {
+  await deleteStashEntry(repository, stashSha)
+}
+
+/** Include separately committed untracked files in previews of command-line stashes. */
+export async function getRepositoryStashedFiles(
+  repository: Repository,
+  entry: IRepositoryStashEntry
+): Promise<ReadonlyArray<CommittedFileChange>> {
+  const tracked = await getStashedFiles(repository, entry.stashSha)
+  if (entry.parents.length < 3) {
+    return tracked
+  }
+  const untrackedCommit = entry.parents[2]
+  const { stdout } = await git(
+    [
+      'show',
+      '--root',
+      '--raw',
+      '--numstat',
+      '-z',
+      '--format=format:',
+      '--no-show-signature',
+      untrackedCommit,
+      '--',
+    ],
+    repository.path,
+    'getUntrackedStashedFiles'
+  )
+  return [
+    ...tracked,
+    ...parseRawLogWithNumstat(stdout, untrackedCommit, `${untrackedCommit}^`)
+      .files,
+  ]
 }
 
 /**

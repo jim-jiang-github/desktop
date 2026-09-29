@@ -25,6 +25,7 @@ import { FocusContainer } from './lib/focus-container'
 import { ImageDiffType } from '../models/diff'
 import { IMenu } from '../models/app-menu'
 import { StashDiffViewer } from './stashing'
+import { RepositoryStashBrowser } from './stashing/repository-stash-browser'
 import { StashedChangesLoadStates } from '../models/stash-entry'
 import { TutorialPanel, TutorialWelcome, TutorialDone } from './tutorial'
 import { TutorialStep, isValidTutorialStep } from '../models/tutorial-step'
@@ -146,11 +147,16 @@ interface IRepositoryViewProps {
 interface IRepositoryViewState {
   readonly changesListScrollTop: number
   readonly compareListScrollTop: number
+  readonly stashRepositoryPath: string | null
+  readonly stashSidebarHost: HTMLDivElement | null
+  readonly stashSidebarWidth: number | null
+  readonly isNarrow: boolean
 }
 
 const enum Tab {
   Changes = 0,
   History = 1,
+  Stashes = 2,
 }
 
 export class RepositoryView extends React.Component<
@@ -176,14 +182,20 @@ export class RepositoryView extends React.Component<
     this.state = {
       changesListScrollTop: 0,
       compareListScrollTop: 0,
+      stashRepositoryPath: null,
+      stashSidebarHost: null,
+      stashSidebarWidth: null,
+      isNarrow: window.innerWidth < 1100,
     }
   }
 
   public setFocusHistoryNeeded(): void {
+    this.setState({ stashRepositoryPath: null })
     this.focusHistoryNeeded = true
   }
 
   public setFocusChangesNeeded(): void {
+    this.setState({ stashRepositoryPath: null })
     this.focusChangesNeeded = true
   }
 
@@ -215,10 +227,11 @@ export class RepositoryView extends React.Component<
   }
 
   private renderTabs(): JSX.Element {
-    const selectedTab =
-      this.props.state.selectedSection === RepositorySectionTab.Changes
-        ? Tab.Changes
-        : Tab.History
+    const selectedTab = this.isShowingStashes
+      ? Tab.Stashes
+      : this.props.state.selectedSection === RepositorySectionTab.Changes
+      ? Tab.Changes
+      : Tab.History
 
     return (
       <TabBar selectedIndex={selectedTab} onTabClicked={this.onTabClicked}>
@@ -230,6 +243,16 @@ export class RepositoryView extends React.Component<
         <div className="with-indicator" id="history-tab">
           <span>History</span>
         </div>
+        {__RELEASE_CHANNEL__ === 'custom' && (
+          <span className="with-indicator" id="stashes-tab">
+            <span>Stashes</span>
+            <FilesChangedBadge
+              filesChangedCount={
+                this.props.state.changesState.repositoryStashes.length
+              }
+            />
+          </span>
+        )}
       </TabBar>
     )
   }
@@ -397,10 +420,18 @@ export class RepositoryView extends React.Component<
   }
 
   private handleSidebarWidthReset = () => {
+    if (this.isShowingStashes) {
+      this.setState({ stashSidebarWidth: null })
+      return
+    }
     this.props.dispatcher.resetSidebarWidth()
   }
 
   private handleSidebarResize = (width: number) => {
+    if (this.isShowingStashes) {
+      this.setState({ stashSidebarWidth: width })
+      return
+    }
     this.props.dispatcher.setSidebarWidth(width)
   }
 
@@ -409,15 +440,31 @@ export class RepositoryView extends React.Component<
       <FocusContainer onFocusWithinChanged={this.onSidebarFocusWithinChanged}>
         <Resizable
           id="repository-sidebar"
-          width={this.props.sidebarWidth.value}
+          width={
+            this.isShowingStashes
+              ? this.stashSidebarWidth
+              : this.props.sidebarWidth.value
+          }
           maximumWidth={this.props.sidebarWidth.max}
-          minimumWidth={this.props.sidebarWidth.min}
+          minimumWidth={
+            this.isShowingStashes ? 260 : this.props.sidebarWidth.min
+          }
           onReset={this.handleSidebarWidthReset}
           onResize={this.handleSidebarResize}
           description="Repository sidebar"
         >
           {this.renderTabs()}
-          {this.renderSidebarContents()}
+          <div
+            className="repository-sidebar-content"
+            hidden={this.isShowingStashes}
+          >
+            {this.renderSidebarContents()}
+          </div>
+          <div
+            className="repository-stash-sidebar-host"
+            hidden={!this.isShowingStashes}
+            ref={this.onStashSidebarHost}
+          />
         </Resizable>
       </FocusContainer>
     )
@@ -644,9 +691,14 @@ export class RepositoryView extends React.Component<
 
   public render() {
     return (
-      <UiView id="repository">
+      <UiView
+        id="repository"
+        className={this.isShowingStashes ? 'showing-stashes' : undefined}
+      >
         {this.renderSidebar()}
-        {this.renderContent()}
+        {this.isShowingStashes
+          ? this.renderRepositoryStashes()
+          : this.renderContent()}
         {this.maybeRenderTutorialPanel()}
       </UiView>
     )
@@ -666,13 +718,22 @@ export class RepositoryView extends React.Component<
 
   public componentDidMount() {
     window.addEventListener('keydown', this.onGlobalKeyDown)
+    window.addEventListener('resize', this.onWindowResize)
   }
 
   public componentWillUnmount() {
     window.removeEventListener('keydown', this.onGlobalKeyDown)
+    window.removeEventListener('resize', this.onWindowResize)
   }
 
-  public componentDidUpdate(): void {
+  public componentDidUpdate(prevProps: IRepositoryViewProps): void {
+    if (
+      this.state.stashRepositoryPath !== null &&
+      (prevProps.repository.path !== this.props.repository.path ||
+        prevProps.state.selectedSection !== this.props.state.selectedSection)
+    ) {
+      this.setState({ stashRepositoryPath: null })
+    }
     if (this.focusChangesNeeded) {
       this.focusChangesNeeded = false
       this.changesSidebarRef.current?.focus()
@@ -693,16 +754,22 @@ export class RepositoryView extends React.Component<
       return
     }
 
-    // Toggle tab selection on Ctrl+Tab. Note that we don't care
-    // about the shift key here, we can get away with that as long
-    // as there's only two tabs.
     if (event.ctrlKey && event.key === 'Tab') {
-      this.changeTab()
+      this.changeTab(event.shiftKey)
       event.preventDefault()
     }
   }
 
-  private changeTab() {
+  private changeTab(backwards: boolean) {
+    if (__RELEASE_CHANNEL__ === 'custom') {
+      const current = this.isShowingStashes
+        ? Tab.Stashes
+        : this.props.state.selectedSection === RepositorySectionTab.Changes
+        ? Tab.Changes
+        : Tab.History
+      this.onTabClicked((current + (backwards ? 2 : 1)) % 3)
+      return
+    }
     const section =
       this.props.state.selectedSection === RepositorySectionTab.History
         ? RepositorySectionTab.Changes
@@ -715,6 +782,11 @@ export class RepositoryView extends React.Component<
   }
 
   private onTabClicked = (tab: Tab) => {
+    if (tab === Tab.Stashes) {
+      this.onShowStashes()
+      return
+    }
+    this.setState({ stashRepositoryPath: null })
     const section =
       tab === Tab.History
         ? RepositorySectionTab.History
@@ -729,6 +801,54 @@ export class RepositoryView extends React.Component<
         showBranchList: false,
       })
     }
+  }
+
+  private get isShowingStashes() {
+    return (
+      __RELEASE_CHANNEL__ === 'custom' &&
+      this.state.stashRepositoryPath === this.props.repository.path
+    )
+  }
+
+  private get stashSidebarWidth() {
+    return this.state.stashSidebarWidth ?? (this.state.isNarrow ? 260 : 300)
+  }
+
+  private onWindowResize = () => {
+    this.setState({ isNarrow: window.innerWidth < 1100 })
+  }
+
+  private onShowStashes = () => {
+    this.setState({ stashRepositoryPath: this.props.repository.path })
+  }
+
+  private onStashSidebarHost = (host: HTMLDivElement | null) => {
+    if (host !== null) {
+      this.setState({ stashSidebarHost: host })
+    }
+  }
+
+  private renderRepositoryStashes() {
+    if (this.state.stashSidebarHost === null) {
+      return null
+    }
+    return (
+      <RepositoryStashBrowser
+        key={this.props.repository.path}
+        sidebarHost={this.state.stashSidebarHost}
+        sidebarWidth={this.stashSidebarWidth}
+        entries={this.props.state.changesState.repositoryStashes}
+        imageDiffType={this.props.imageDiffType}
+        repository={this.props.repository}
+        dispatcher={this.props.dispatcher}
+        showSideBySideDiff={this.props.showSideBySideDiff}
+        onOpenBinaryFile={this.onOpenBinaryFile}
+        onOpenSubmodule={this.onOpenSubmodule}
+        onChangeImageDiffType={this.onChangeImageDiffType}
+        onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
+        onOpenInExternalEditor={this.props.onOpenInExternalEditor}
+      />
+    )
   }
 
   private maybeRenderTutorialPanel(): JSX.Element | null {

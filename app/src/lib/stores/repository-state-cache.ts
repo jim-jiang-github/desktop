@@ -382,6 +382,7 @@ function getInitialRepositoryState(): IRepositoryState {
       showCoAuthoredBy: false,
       conflictState: null,
       stashEntry: null,
+      repositoryStashes: [],
       currentBranchProtected: false,
       currentRepoRulesInfo: new RepoRulesInfo(),
       fileListFilter: {

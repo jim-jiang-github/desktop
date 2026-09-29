@@ -2947,6 +2947,21 @@ export class Dispatcher {
     return this.appStore._popStashEntry(repository, stashEntry)
   }
 
+  /** Apply a selected stash without removing it, including on conflicts. */
+  public applyRepositoryStash(repository: Repository, stashSha: string) {
+    return this.appStore._applyRepositoryStash(repository, stashSha)
+  }
+
+  /** Delete a confirmed stash using a freshly resolved identity. */
+  public deleteRepositoryStash(repository: Repository, stashSha: string) {
+    return this.appStore._deleteRepositoryStash(repository, stashSha)
+  }
+
+  /** Refresh the shared stash list without fetching or changing the checkout. */
+  public refreshRepositoryStashes(repository: Repository) {
+    return this.appStore._refreshRepositoryStashes(repository)
+  }
+
   /**
    * Set the width of the commit summary column in the
    * history view to the given value.

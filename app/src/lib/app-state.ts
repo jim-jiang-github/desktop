@@ -49,7 +49,7 @@ import { ApplicableTheme, ApplicationTheme } from '../ui/lib/application-theme'
 import { IAccountRepositories } from './stores/api-repositories-store'
 import { ManualConflictResolution } from '../models/manual-conflict-resolution'
 import { Banner } from '../models/banner'
-import { IStashEntry } from '../models/stash-entry'
+import { IStashEntry, IRepositoryStashEntry } from '../models/stash-entry'
 import { TutorialStep } from '../models/tutorial-step'
 import { UncommittedChangesStrategy } from '../models/uncommitted-changes-strategy'
 import { DragElement } from '../models/drag-drop'
@@ -850,6 +850,9 @@ export interface IChangesState {
    * if no stash exists for the current branch.
    */
   readonly stashEntry: IStashEntry | null
+
+  /** All stash entries, independent of the current branch's automatic stash. */
+  readonly repositoryStashes: ReadonlyArray<IRepositoryStashEntry>
 
   /**
    * The current selection state in the Changes view. Can be either

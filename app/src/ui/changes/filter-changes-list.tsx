@@ -1103,7 +1103,7 @@ export class FilterChangesList extends React.Component<
   }
 
   private renderStashedChanges() {
-    if (this.props.stashEntry === null) {
+    if (__RELEASE_CHANNEL__ === 'custom' || this.props.stashEntry === null) {
       return null
     }
 

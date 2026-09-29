@@ -11,7 +11,7 @@ import { SeamlessDiffSwitcher } from '../diff/seamless-diff-switcher'
 import { IConstrainedValue } from '../../lib/app-state'
 import { clamp } from '../../lib/clamp'
 
-interface IStashDiffViewerProps {
+export interface IStashDiffViewerProps {
   /** The stash in question. */
   readonly stashEntry: IStashEntry
 

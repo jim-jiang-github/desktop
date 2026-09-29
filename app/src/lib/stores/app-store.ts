@@ -344,6 +344,8 @@ import {
   popStashEntry,
   dropDesktopStashEntry,
   moveStashEntry,
+  applyRepositoryStash,
+  dropRepositoryStash,
 } from '../git/stash'
 import {
   UncommittedChangesStrategy,
@@ -1493,6 +1495,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
         showCoAuthoredBy: gitStore.showCoAuthoredBy,
         coAuthors: gitStore.coAuthors,
         stashEntry,
+        repositoryStashes: gitStore.repositoryStashes,
       }
     })
 
@@ -9302,6 +9305,33 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.statsStore.increment('stashRestoreCount')
     await this._refreshRepository(repository)
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
+  public async _applyRepositoryStash(repository: Repository, stashSha: string) {
+    try {
+      await applyRepositoryStash(repository, stashSha)
+    } finally {
+      // Reload even after a conflict so the existing Changes conflict UI is usable.
+      await this._refreshRepository(repository)
+    }
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
+  public async _deleteRepositoryStash(
+    repository: Repository,
+    stashSha: string
+  ) {
+    try {
+      await dropRepositoryStash(repository, stashSha)
+    } finally {
+      await this.gitStoreCache.get(repository).loadStashEntries()
+    }
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
+  public async _refreshRepositoryStashes(repository: Repository) {
+    await this.gitStoreCache.get(repository).loadStashEntries()
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */

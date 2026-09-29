@@ -240,6 +240,34 @@ Only run commands you trust: they have your Windows permissions. Do not save
 passwords or other secrets in commands. Use `cmd /c` for commands requiring CMD
 syntax instead of PowerShell syntax.
 
+### Browse all stashes in Custom
+
+The **Stashes (count)** tab opens the
+repository's complete stash list, including command-line stashes and entries
+from other branches. It reuses the left sidebar: stashes above, changed files
+below, with the diff on the right. Drag the divider or focus it and use the
+arrow keys to adjust the two lists. Switching back to **Changes** preserves
+the selected working files and commit draft.
+Select a stash to view its message, source branch (when available), creation time,
+files and diffs, including untracked files saved with `git stash -u`.
+Use the list's arrow keys to select entries. The refresh icon, application focus and
+periodic refresh while the browser is open pick up external stash changes.
+
+**Restore...** asks you to confirm the target worktree path, applies only the
+selected stash and **keeps the stash**, both on success and on conflict.
+Switch to **Changes** to review restored files or resolve conflicts.
+**Delete stash...** in the **...** menu always asks for confirmation and
+deletes only the selected entry. Stashes are shared by a
+repository's worktrees, so deleting one also removes it from the other worktrees.
+Selection uses commit identities instead of cached `stash@{n}` indices.
+Ambiguous duplicate commit entries are rejected rather than guessing which to
+delete. Safe deletion requires Git's standard files reference backend; other
+backends report an error and must be managed with Git.
+
+The Custom browser is independent of Desktop's existing automatic per-branch
+stash and branch-switching workflow. Merely viewing or selecting a stash does not
+replace the automatic stash or change the checkout.
+
 ### Sharing commands
 
 In either command configuration dialog, **Export selected...** saves the selected

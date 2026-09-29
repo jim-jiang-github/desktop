@@ -50,15 +50,158 @@
     }
   }
 
-  // Necessary so that the diff doesn't expand
-  // beyond the width of the history
+  // Necessary so that the diff doesn't expand beyond the width of the history.
   min-width: 0;
 
-  // for stash diff viewer
   .file-list {
     display: flex;
     flex: 1;
-
     border-right: var(--base-border);
   }
+}
+
+.repository-sidebar-content,
+.repository-stash-sidebar-host,
+.repository-stash-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.repository-sidebar-content[hidden],
+.repository-stash-sidebar-host[hidden] {
+  display: none;
+}
+
+.repository-stash-sidebar {
+  .repository-stash-list {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    min-height: 112px;
+  }
+  .list-focus-container,
+  .file-list {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .list-item {
+    border-bottom: var(--base-border);
+  }
+  .repository-stash-row {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: var(--spacing) var(--spacing-double);
+    gap: var(--spacing-half);
+  }
+  .stash-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 34px;
+    flex-shrink: 0;
+    padding: 0 var(--spacing-double);
+    border-bottom: var(--base-border);
+    color: var(--text-secondary-color);
+  }
+  .stash-icon-button {
+    border: 0;
+    background: transparent;
+    padding: var(--spacing-half);
+    min-width: 0;
+  }
+  .stash-splitter {
+    flex: 0 0 5px;
+    padding: 0;
+    border: 0;
+    background: var(--box-border-color);
+    cursor: row-resize;
+    touch-action: none;
+    &:focus-visible {
+      outline: 2px solid var(--focus-color);
+      outline-offset: -2px;
+    }
+  }
+  .stash-sidebar-footer {
+    border-top: var(--base-border);
+    padding: var(--spacing);
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-sm);
+  }
+}
+
+.repository-stash-row,
+#repository-stash-detail {
+  .stash-title,
+  .stash-metadata {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .stash-metadata {
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-sm);
+  }
+}
+
+#repository-stash-detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  .repository-stash-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing);
+    height: 76px;
+    flex-shrink: 0;
+    border-bottom: var(--base-border);
+    padding: var(--spacing) var(--spacing-double);
+    .stash-heading {
+      min-width: 0;
+    }
+    h3 {
+      font-size: var(--font-size-md);
+      margin: 0 0 var(--spacing-half);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .stash-actions {
+      display: flex;
+      gap: var(--spacing);
+      flex-shrink: 0;
+    }
+  }
+  footer {
+    padding: var(--spacing) var(--spacing-double);
+    border-top: var(--base-border);
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-sm);
+    margin-top: auto;
+  }
+  .empty-stashes,
+  .stash-loading {
+    padding: var(--spacing-double);
+  }
+  .stash-file-heading {
+    display: block;
+    flex-shrink: 0;
+    padding: var(--spacing) var(--spacing-double);
+    border-bottom: var(--base-border);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.stash-restore-path {
+  overflow-wrap: anywhere;
 }

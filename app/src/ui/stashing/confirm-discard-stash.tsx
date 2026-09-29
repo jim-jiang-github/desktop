@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Dialog, DialogContent, DialogFooter } from '../dialog'
+import { Dialog, DialogContent, DialogFooter, DialogError } from '../dialog'
 import { Repository } from '../../models/repository'
 import { Dispatcher } from '../dispatcher'
 import { Row } from '../lib/row'
@@ -8,16 +8,24 @@ import { OkCancelButtonGroup } from '../dialog/ok-cancel-button-group'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
 
 interface IConfirmDiscardStashProps {
-  readonly dispatcher: Dispatcher
+  readonly dispatcher: Pick<
+    Dispatcher,
+    | 'setConfirmDiscardStashSetting'
+    | 'dropStash'
+    | 'deleteRepositoryStash'
+    | 'postError'
+  >
   readonly repository: Repository
   readonly stash: IStashEntry
   readonly askForConfirmationOnDiscardStash: boolean
   readonly onDismissed: () => void
+  readonly allStashes?: boolean
 }
 
 interface IConfirmDiscardStashState {
   readonly isDiscarding: boolean
   readonly confirmDiscardStash: boolean
+  readonly errorMessage: string | null
 }
 /**
  * Dialog to confirm dropping a stash
@@ -32,11 +40,16 @@ export class ConfirmDiscardStashDialog extends React.Component<
     this.state = {
       isDiscarding: false,
       confirmDiscardStash: props.askForConfirmationOnDiscardStash,
+      errorMessage: null,
     }
   }
 
   public render() {
-    const title = __DARWIN__ ? 'Discard Stash?' : 'Discard stash?'
+    const title = this.props.allStashes
+      ? 'Delete selected stash?'
+      : __DARWIN__
+      ? 'Discard Stash?'
+      : 'Discard stash?'
 
     return (
       <Dialog
@@ -50,24 +63,38 @@ export class ConfirmDiscardStashDialog extends React.Component<
         role="alertdialog"
         ariaDescribedBy="discard-stash-warning-message"
       >
+        {this.state.errorMessage !== null && (
+          <DialogError>{this.state.errorMessage}</DialogError>
+        )}
         <DialogContent>
           <Row id="discard-stash-warning-message">
-            Are you sure you want to discard these stashed changes?
+            {this.props.allStashes
+              ? 'Permanently delete this stash from all worktrees of this repository?'
+              : 'Are you sure you want to discard these stashed changes?'}
           </Row>
-          <Row>
-            <Checkbox
-              label="Do not show this message again"
-              value={
-                this.state.confirmDiscardStash
-                  ? CheckboxValue.Off
-                  : CheckboxValue.On
-              }
-              onChange={this.onAskForConfirmationOnDiscardStashChanged}
-            />
-          </Row>
+          {this.props.allStashes ? (
+            <Row>
+              <code>{this.props.stash.stashSha}</code>
+            </Row>
+          ) : (
+            <Row>
+              <Checkbox
+                label="Do not show this message again"
+                value={
+                  this.state.confirmDiscardStash
+                    ? CheckboxValue.Off
+                    : CheckboxValue.On
+                }
+                onChange={this.onAskForConfirmationOnDiscardStashChanged}
+              />
+            </Row>
+          )}
         </DialogContent>
         <DialogFooter>
-          <OkCancelButtonGroup destructive={true} okButtonText="Discard" />
+          <OkCancelButtonGroup
+            destructive={true}
+            okButtonText={this.props.allStashes ? 'Delete stash' : 'Discard'}
+          />
         </DialogFooter>
       </Dialog>
     )
@@ -86,11 +113,26 @@ export class ConfirmDiscardStashDialog extends React.Component<
 
     this.setState({
       isDiscarding: true,
+      errorMessage: null,
     })
 
     try {
-      dispatcher.setConfirmDiscardStashSetting(this.state.confirmDiscardStash)
-      await dispatcher.dropStash(repository, stash)
+      if (this.props.allStashes) {
+        await dispatcher.deleteRepositoryStash(repository, stash.stashSha)
+      } else {
+        dispatcher.setConfirmDiscardStashSetting(this.state.confirmDiscardStash)
+        await dispatcher.dropStash(repository, stash)
+      }
+    } catch (error) {
+      if (this.props.allStashes) {
+        log.error('Unable to delete the selected stash', error)
+        this.setState({
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
+      } else {
+        dispatcher.postError(error)
+      }
+      return
     } finally {
       this.setState({
         isDiscarding: false,

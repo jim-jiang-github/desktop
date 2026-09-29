@@ -90,7 +90,11 @@ import { formatCommitMessage } from '../format-commit-message'
 import { GitAuthor } from '../../models/git-author'
 import { BaseStore } from './base-store'
 import { getStashes, getStashedFiles } from '../git/stash'
-import { IStashEntry, StashedChangesLoadStates } from '../../models/stash-entry'
+import {
+  IStashEntry,
+  IRepositoryStashEntry,
+  StashedChangesLoadStates,
+} from '../../models/stash-entry'
 import { PullRequest } from '../../models/pull-request'
 import { IStatsStore } from '../stats'
 import { getTagsToPush, storeTagsToPush } from './helpers/tags-to-push-storage'
@@ -156,6 +160,8 @@ export class GitStore extends BaseStore {
   private _desktopStashEntries = new Map<string, IStashEntry>()
 
   private _stashEntryCount = 0
+  private _repositoryStashes: ReadonlyArray<IRepositoryStashEntry> = []
+  private stashLoadGeneration = 0
 
   public constructor(
     private readonly repository: Repository,
@@ -1193,8 +1199,12 @@ export class GitStore extends BaseStore {
    * Refreshes the list of GitHub Desktop created stash entries for the repository
    */
   public async loadStashEntries(): Promise<void> {
+    const generation = ++this.stashLoadGeneration
     const map = new Map<string, IStashEntry>()
     const stash = await getStashes(this.repository)
+    if (generation !== this.stashLoadGeneration) {
+      return
+    }
 
     for (const entry of stash.desktopEntries) {
       // we only want the first entry we find for each branch,
@@ -1215,6 +1225,7 @@ export class GitStore extends BaseStore {
 
     this._desktopStashEntries = map
     this._stashEntryCount = stash.stashEntryCount
+    this._repositoryStashes = stash.allEntries
     this.emitUpdate()
 
     this.loadFilesForCurrentStashEntry()
@@ -1237,6 +1248,11 @@ export class GitStore extends BaseStore {
   /** The total number of stash entries */
   public get stashEntryCount(): number {
     return this._stashEntryCount
+  }
+
+  /** All entries for the stash browser, without branch filtering. */
+  public get repositoryStashes() {
+    return this._repositoryStashes
   }
 
   /** The number of stash entries created by Desktop */

@@ -1,5 +1,12 @@
 import { CommittedFileChange } from './status'
 
+/** A stash from any source, identified by its immutable commit rather than its index. */
+export interface IRepositoryStashEntry extends IStashEntry {
+  readonly message: string
+  readonly createdAt: number
+  readonly isDesktopStash: boolean
+}
+
 export interface IStashEntry {
   /** The fully qualified name of the entry i.e., `refs/stash@{0}` */
   readonly name: string
