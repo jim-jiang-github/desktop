@@ -10,6 +10,8 @@ export interface ICustomCommand {
   readonly id: string
   readonly name: string
   readonly command: string
+  /** Allow the script to hand a prepared branch/tag to Desktop for authenticated push. */
+  readonly pushWithDesktop?: boolean
 }
 
 /** The outcome of an embedded command, after its output streams have closed. */
@@ -33,7 +35,10 @@ function commandDurationKey(repositoryPath: string, command: ICustomCommand) {
 }
 
 function commandHash(command: ICustomCommand) {
-  return createHash('sha256').update(command.command).digest('hex')
+  return createHash('sha256')
+    .update(command.command)
+    .update(command.pushWithDesktop === true ? '\0desktop-push' : '')
+    .digest('hex')
 }
 
 /** Read the last successful duration for this command version and checkout. */
@@ -101,7 +106,9 @@ function isCustomCommand(value: unknown): value is ICustomCommand {
     'name' in value &&
     typeof value.name === 'string' &&
     'command' in value &&
-    typeof value.command === 'string'
+    typeof value.command === 'string' &&
+    (!('pushWithDesktop' in value) ||
+      typeof value.pushWithDesktop === 'boolean')
   )
 }
 
@@ -109,6 +116,15 @@ function isCustomCommand(value: unknown): value is ICustomCommand {
 export function getCustomCommandsValidationError(
   commands: ReadonlyArray<ICustomCommand>
 ): string | null {
+  if (
+    commands.some(
+      c =>
+        c.pushWithDesktop !== undefined &&
+        typeof c.pushWithDesktop !== 'boolean'
+    )
+  ) {
+    return 'The Desktop push setting must be a boolean.'
+  }
   if (
     commands.some(
       c => c.name.trim().length === 0 || c.command.trim().length === 0
@@ -200,8 +216,12 @@ export function serializeCustomCommands(
     JSON.stringify(
       {
         format: 'github-desktop-custom-commands',
-        version: 1,
-        commands: commands.map(({ name, command }) => ({ name, command })),
+        version: commands.some(c => c.pushWithDesktop === true) ? 2 : 1,
+        commands: commands.map(({ name, command, pushWithDesktop }) => ({
+          name,
+          command,
+          ...(pushWithDesktop === true ? { pushWithDesktop: true } : {}),
+        })),
       },
       null,
       2
@@ -211,7 +231,7 @@ export function serializeCustomCommands(
 
 function isSharedCommand(
   value: unknown
-): value is Pick<ICustomCommand, 'name' | 'command'> {
+): value is Pick<ICustomCommand, 'name' | 'command' | 'pushWithDesktop'> {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -220,7 +240,9 @@ function isSharedCommand(
     value.name.trim().length > 0 &&
     'command' in value &&
     typeof value.command === 'string' &&
-    value.command.trim().length > 0
+    value.command.trim().length > 0 &&
+    (!('pushWithDesktop' in value) ||
+      typeof value.pushWithDesktop === 'boolean')
   )
 }
 
@@ -236,14 +258,14 @@ export function importCustomCommandsFromJSON(
     !('format' in parsed) ||
     parsed.format !== 'github-desktop-custom-commands' ||
     !('version' in parsed) ||
-    parsed.version !== 1 ||
+    (parsed.version !== 1 && parsed.version !== 2) ||
     !('commands' in parsed) ||
     !Array.isArray(parsed.commands) ||
     parsed.commands.length === 0 ||
     !parsed.commands.every(isSharedCommand)
   ) {
     throw new Error(
-      'Choose a version 1 Custom commands JSON export containing nonempty command names and scripts.'
+      'Choose a version 1 or 2 Custom commands JSON export containing nonempty command names and scripts.'
     )
   }
 
@@ -255,7 +277,12 @@ export function importCustomCommandsFromJSON(
       name = `${entry.name.trim()} (${suffix++})`
     }
     usedNames.add(name.trim().toLowerCase())
-    return { id: randomUUID(), name, command: entry.command }
+    return {
+      id: randomUUID(),
+      name,
+      command: entry.command,
+      ...(entry.pushWithDesktop === true ? { pushWithDesktop: true } : {}),
+    }
   })
   return [...existing, ...imported]
 }
@@ -295,7 +322,8 @@ export function getCustomCommandArguments(
 export function startCustomCommand(
   repositoryPath: string,
   command: string,
-  onOutput: (chunk: Buffer) => void
+  onOutput: (chunk: Buffer) => void,
+  pushRequestPath?: string
 ): ICustomCommandExecution {
   if (!__WIN32__) {
     throw new Error('Custom commands are currently supported on Windows only.')
@@ -318,6 +346,10 @@ export function startCustomCommand(
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     shell: false,
+    env: {
+      ...process.env,
+      GITHUB_DESKTOP_PUSH_REQUEST: pushRequestPath,
+    },
   })
   child.stdout.on('data', onOutput)
   child.stderr.on('data', onOutput)

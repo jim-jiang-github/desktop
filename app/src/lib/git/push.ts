@@ -19,6 +19,9 @@ export type PushOptions = {
   readonly branch?: Branch
 
   readonly noVerify?: boolean
+
+  /** Update the explicitly supplied branch and tags together, or none of them. */
+  readonly atomic?: boolean
 } & HookCallbackOptions
 
 /**
@@ -55,6 +58,9 @@ export async function push(
   progressCallback?: (progress: IPushProgress) => void
 ): Promise<void> {
   const args = ['push']
+  if (options?.atomic) {
+    args.push('--atomic')
+  }
 
   if (!remoteBranch) {
     args.push('--set-upstream')

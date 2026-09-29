@@ -270,6 +270,47 @@ The Custom browser is independent of Desktop's existing automatic per-branch
 stash and branch-switching workflow. Merely viewing or selecting a stash does not
 replace the automatic stash or change the checkout.
 
+### Pushing a prepared release with Desktop
+
+Enable **Push prepared branch and tag with Desktop** for a trusted command to
+hand its final push to the same authenticated Git implementation used by
+**Push origin**. It uses the originating checkout's Desktop account selection,
+even if you switch repositories while the command runs. Tokens are not passed
+to PowerShell. This does not bypass expired credentials or missing write access.
+
+The script must not run `git push`. After preparing and validating its local
+commit and tag, it writes this JSON handoff and exits successfully:
+
+```powershell
+if ([string]::IsNullOrWhiteSpace($env:GITHUB_DESKTOP_PUSH_REQUEST)) {
+    throw 'Enable Push prepared branch and tag with Desktop in an updated Custom build.'
+}
+$request = @{
+    remoteURL = 'https://github.com/OWNER/REPOSITORY.git'
+    branch = $branch
+    commit = $versionCommit
+    tag = $newTag
+    tagObject = $tagObject
+} | ConvertTo-Json
+[IO.File]::WriteAllText($env:GITHUB_DESKTOP_PUSH_REQUEST, $request)
+exit 0
+```
+
+The guard belongs at the beginning of the script, before making changes.
+`commit` and `tagObject` must be full object IDs, not names such as `HEAD`.
+The origin must have exactly one fetch URL and one push URL matching `remoteURL`
+(HTTPS). The branch must still be checked out, the worktree clean, and the tag
+must still point to the prepared commit. Desktop atomically pushes just those
+two object IDs without force, then verifies both remote refs. Unrelated tags
+are not included. Failed preparation never pushes; failed push keeps the local
+commit and tag for a retry. Missing or invalid handoffs are errors, not success.
+
+The command remains running until Desktop finishes verification. **Stop command**
+can stop preparation; once the authenticated push begins, wait for its result.
+Stopping PowerShell cannot undo a remote push. The temporary handoff is deleted
+afterward. Only explicitly enabled commands receive a handoff path; ordinary
+command output cannot trigger a push.
+
 ### Sharing commands
 
 In either command configuration dialog, **Export selected...** saves the selected
@@ -284,14 +325,18 @@ such as `Build (2)`. Each imported command receives a new local identity.
 Review the scripts and choose **Save** to keep them, or **Cancel** to discard the
 draft. Neither importing nor exporting executes commands.
 
-The versioned JSON file contains only command names and full PowerShell script
-text, not local command IDs, repository paths, group assignments or execution
+The versioned JSON file contains command names, full PowerShell script text and
+the optional Desktop push setting, not local command IDs, repository paths,
+group assignments or execution
 history. Hard-coded paths and secrets inside the scripts are **not** removed.
 Review files before sharing or running them. Scripts referencing other local
 files still require those files on the recipient's machine. The recipient needs
 a Custom build with this import/export feature; official GitHub Desktop cannot
 import these files. Unsupported formats and invalid entries are rejected without
 changing the draft.
+Exports with Desktop push enabled use format version 2, so older Custom builds
+reject them instead of silently dropping the push step. Other exports remain
+version 1. Review the push setting as well as the script before saving an import.
 
 ## Local Custom Windows installer
 

@@ -407,12 +407,29 @@ describe('custom command dialog', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), {
       target: { value: 'Test' },
     })
+
     assert.match(screen.getByRole('alert').textContent ?? '', /different name/)
     assert.ok(
       screen
         .getByRole('button', { name: 'Save', exact: true })
         .hasAttribute('aria-disabled')
     )
+  })
+
+  it('enables Desktop push only for the selected command after saving', async () => {
+    const { calls, isDismissed } = setup()
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'Push prepared branch and tag with Desktop',
+    })
+    assert.ok(checkbox instanceof HTMLInputElement)
+    assert.equal(checkbox.checked, false)
+    fireEvent.click(checkbox)
+    assert.ok(screen.getByText(/pushing a tag may publish a release/))
+    assert.equal(calls.length, 0)
+    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }))
+    await waitFor(() => assert.equal(isDismissed(), true))
+    assert.equal(calls[0].commands[0].pushWithDesktop, true)
+    assert.equal(calls[0].commands[1].pushWithDesktop, undefined)
   })
 
   it('keeps the editor open on failure so the command can be corrected', async () => {

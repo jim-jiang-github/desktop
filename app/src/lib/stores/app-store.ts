@@ -16,6 +16,10 @@ import {
   importCustomCommandsFromJSON,
 } from '../custom-command'
 import {
+  pushCustomCommandRequest,
+  startCustomCommandWithDesktopPush,
+} from '../custom-command-push'
+import {
   AccountsStore,
   CloningRepositoriesStore,
   CopilotStore,
@@ -7823,11 +7827,43 @@ export class AppStore extends TypedBaseStore<IAppState> {
     onOutput: (chunk: Buffer) => void
   ) {
     const startedAt = performance.now()
-    const execution = startCustomCommand(
-      repository.path,
-      command.command,
-      onOutput
-    )
+    const execution =
+      command.pushWithDesktop === true
+        ? startCustomCommandWithDesktopPush(
+            repository.path,
+            command.command,
+            onOutput,
+            async request => {
+              if (
+                this.repositoryStateCache.get(repository)
+                  .isPushPullFetchInProgress
+              ) {
+                throw new Error(
+                  'Another network operation is running. Retry the command after it finishes.'
+                )
+              }
+              await this.withPushPullFetch(repository, async () => {
+                try {
+                  await pushCustomCommandRequest(
+                    repository,
+                    request,
+                    progress => {
+                      this.updatePushPullFetchProgress(repository, {
+                        ...progress,
+                        title: 'Pushing with Desktop',
+                        remote: 'origin',
+                        branch: request.branch,
+                      })
+                    }
+                  )
+                  await this._refreshRepository(repository)
+                } finally {
+                  this.updatePushPullFetchProgress(repository, null)
+                }
+              })
+            }
+          )
+        : startCustomCommand(repository.path, command.command, onOutput)
     return {
       ...execution,
       result: execution.result.then(result => {

@@ -13,6 +13,7 @@ import { Button } from '../lib/button'
 import { Select } from '../lib/select'
 import { TextBox } from '../lib/text-box'
 import { TextArea } from '../lib/text-area'
+import { Checkbox, CheckboxValue } from '../lib/checkbox'
 
 interface ICustomCommandDialogProps {
   readonly repository: Repository
@@ -93,6 +94,16 @@ export function CustomCommandDialog(props: ICustomCommandDialogProps) {
       props.onDismissed()
     }
   }, [busy, commands, props, validationError])
+
+  const onPushWithDesktopChanged = React.useCallback(
+    (event: React.FormEvent<HTMLInputElement>) => {
+      const pushWithDesktop = event.currentTarget.checked
+      setCommands(current =>
+        current.map(c => (c.id === selectedId ? { ...c, pushWithDesktop } : c))
+      )
+    },
+    [selectedId]
+  )
 
   const onImport = React.useCallback(async () => {
     if (busy) {
@@ -252,6 +263,26 @@ export function CustomCommandDialog(props: ICustomCommandDialogProps) {
               disabled={busy}
               placeholder="npm run build"
             />
+            <Checkbox
+              label="Push prepared branch and tag with Desktop"
+              value={
+                selected.pushWithDesktop === true
+                  ? CheckboxValue.On
+                  : CheckboxValue.Off
+              }
+              onChange={onPushWithDesktopChanged}
+              disabled={busy}
+            />
+            {selected.pushWithDesktop === true && (
+              <p>
+                After a successful script, Desktop pushes using its configured
+                account. The script must write the branch, commit, tag,
+                tagObject and remoteURL to the JSON file at
+                $env:GITHUB_DESKTOP_PUSH_REQUEST instead of running git push.
+                Review this before enabling: pushing a tag may publish a
+                release.
+              </p>
+            )}
           </>
         )}
         {validationError !== null && <p role="alert">{validationError}</p>}
