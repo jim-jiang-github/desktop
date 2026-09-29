@@ -10,12 +10,14 @@ import { Terminal } from '../terminal'
 interface ICustomCommandRunDialogProps {
   readonly store: CustomCommandStore
   readonly onDismissed: () => void
+  readonly onDismissResult: () => void
 }
 
 /** A disposable view of a command owned by the application, not the dialog. */
 export function CustomCommandRunDialog({
   store,
   onDismissed,
+  onDismissResult,
 }: ICustomCommandRunDialogProps) {
   const terminal = React.useRef<Terminal>(null)
   const [task, setTask] = React.useState(store.snapshot)
@@ -30,6 +32,13 @@ export function CustomCommandRunDialog({
   const onStop = React.useCallback(() => {
     store.stop()
   }, [store])
+  const onClose = React.useCallback(() => {
+    if (isCustomCommandActive(store.snapshot)) {
+      onDismissed()
+    } else {
+      onDismissResult()
+    }
+  }, [store, onDismissed, onDismissResult])
   if (task === null) {
     return null
   }
@@ -41,8 +50,8 @@ export function CustomCommandRunDialog({
       title={task.command.name}
       loading={active}
       backdropDismissable={false}
-      onDismissed={onDismissed}
-      onSubmit={onDismissed}
+      onDismissed={onClose}
+      onSubmit={onClose}
     >
       <DialogContent>
         <div
@@ -107,7 +116,7 @@ export function CustomCommandRunDialog({
         <p className="command-run-hint">
           {active
             ? 'Run in background to keep working in Desktop. Interactive prompts are not supported.'
-            : 'Use Custom commands > Show command output to view these logs again, or Dismiss command result to clear them.'}
+            : 'Closing this panel clears the command result and its output.'}
         </p>
       </DialogContent>
       <DialogFooter>

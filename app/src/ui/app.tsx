@@ -1672,6 +1672,7 @@ export class App extends React.Component<IAppProps, IAppState> {
             key={`custom-command-run-${popup.id}`}
             store={this.props.appStore.customCommandStore}
             onDismissed={onPopupDismissedFn}
+            onDismissResult={this.onDismissCustomCommandResult}
           />
         )
       case PopupType.CustomCommand:

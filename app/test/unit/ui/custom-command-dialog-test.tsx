@@ -490,6 +490,10 @@ describe('custom command dialog', () => {
       <DialogStackContext.Provider value={{ isTopMost: true }}>
         <CustomCommandRunDialog
           store={store}
+          onDismissResult={() => {
+            store.dismissResult()
+            dismissed = true
+          }}
           onDismissed={() => {
             dismissed = true
           }}
@@ -530,6 +534,8 @@ describe('custom command dialog', () => {
     assert.ok(form)
     fireEvent.submit(form)
     assert.equal(run.isDismissed(), true)
+    assert.equal(run.store.snapshot?.status, 'running')
+    assert.equal(run.stop.mock.callCount(), 0)
     run.finish({ kind: 'exited', exitCode: 0 })
     await waitFor(() =>
       assert.match(
@@ -541,6 +547,7 @@ describe('custom command dialog', () => {
     assert.equal(run.dispatcher.executeCustomCommand.mock.callCount(), 1)
     fireEvent.submit(form)
     assert.equal(run.isDismissed(), true)
+    assert.equal(run.store.snapshot, null)
   })
 
   it('labels historical progress as estimated and never reaches 100 while still running', async t => {
@@ -571,6 +578,56 @@ describe('custom command dialog', () => {
     assert.equal(run.isDismissed(), false)
     assert.equal(run.write.mock.callCount(), 1)
   })
+
+  for (const result of [
+    { kind: 'exited', exitCode: 0 },
+    { kind: 'exited', exitCode: 7 },
+    { kind: 'cancelled' },
+  ] as const) {
+    for (const closeWith of ['button', 'header']) {
+      it(`clears ${JSON.stringify(
+        result
+      )} and its output when closed via ${closeWith}`, async t => {
+        const run = setupExecution(t)
+        const appeared = new Promise<void>(resolve => {
+          run.view.container.addEventListener(
+            'dialog-appeared',
+            () => resolve(),
+            { once: true }
+          )
+        })
+        run.output(Buffer.from('retained until closed'))
+        run.finish(result)
+        await appeared
+        assert.equal(
+          screen.getAllByRole('button', { name: 'Close', exact: true }).length,
+          2
+        )
+        if (closeWith === 'button') {
+          const submit = run.view.container.querySelector(
+            '.dialog-footer button[type="submit"]'
+          )
+          assert.ok(submit)
+          fireEvent.click(submit)
+        } else {
+          const close = run.view.container.querySelector(
+            '.dialog-header button'
+          )
+          assert.ok(close)
+          fireEvent.click(close)
+        }
+        assert.equal(run.isDismissed(), true)
+        assert.equal(run.store.snapshot, null)
+        const replay: string[] = []
+        const unsubscribe = run.store.subscribeOutput(chunk =>
+          replay.push(chunk)
+        )
+        unsubscribe()
+        assert.deepEqual(replay, [])
+        assert.equal(run.stop.mock.callCount(), 0)
+      })
+    }
+  }
 
   it('stops without closing and waits for confirmed cancellation', async t => {
     const run = setupExecution(t)
@@ -665,7 +722,11 @@ describe('custom command dialog', () => {
     assert.equal(run.stop.mock.callCount(), 0)
     run.output(Buffer.from('output while hidden'))
     const restored = render(
-      <CustomCommandRunDialog store={run.store} onDismissed={() => {}} />
+      <CustomCommandRunDialog
+        store={run.store}
+        onDismissed={() => {}}
+        onDismissResult={() => run.store.dismissResult()}
+      />
     )
     unmount = restored.unmount
     assert.equal(run.dispatcher.executeCustomCommand.mock.callCount(), 1)

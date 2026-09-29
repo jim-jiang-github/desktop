@@ -194,12 +194,14 @@ When hiding the panel or when a background task finishes, **Custom commands** br
 highlights three times and displays a short hint. Reduced motion uses a static
 highlight instead. The hint disappears automatically or can be closed with its X;
 closing a hint never stops the command or clears its logs. For a finished task,
-choose **Custom commands > Dismiss command result** to clear its output and progress.
-Opening and closing the panel does not restart or stop the process.
+closing its output panel with **Close**, **X**, or **Escape** clears the result,
+output and progress without showing another completion hint. You can also choose
+**Custom commands > Dismiss command result**. Closing a running command's panel
+keeps it running in the background; use **Stop command** to stop the process.
 The terminal retains 2,000 scrollback lines; background replay retains at most
 2,000 lines and 1 MiB of UTF-8 output. Older output beyond those limits is discarded.
-The latest result and logs remain available until another command starts or
-Desktop exits; logs are not persisted across application restarts.
+The latest background result and logs remain available until dismissed, another
+command starts or Desktop exits; logs are not persisted across application restarts.
 
 The first run shows an indeterminate progress animation. After a successful run,
 its duration is remembered locally for that command and checkout. Later runs
