@@ -37,7 +37,7 @@ import {
   isAttributableEmailFor,
   lookupPreferredEmail,
 } from '../../lib/email'
-import { setGlobalConfigValue } from '../../lib/git/config'
+import { setConfigValue } from '../../lib/git/config'
 import { Popup, PopupType } from '../../models/popup'
 import { RepositorySettingsTab } from '../repository-settings/repository-settings'
 import { IdealSummaryLength } from '../../lib/wrap-rich-text-commit-message'
@@ -794,7 +794,7 @@ export class CommitMessage extends React.Component<
   }
 
   private onUpdateUserEmail = async (email: string) => {
-    await setGlobalConfigValue('user.email', email)
+    await setConfigValue(this.props.repository, 'user.email', email)
     this.props.onRefreshAuthor()
   }
 

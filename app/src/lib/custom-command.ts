@@ -10,8 +10,6 @@ export interface ICustomCommand {
   readonly id: string
   readonly name: string
   readonly command: string
-  /** Allow the script to hand a prepared branch/tag to Desktop for authenticated push. */
-  readonly pushWithDesktop?: boolean
 }
 
 /** The outcome of an embedded command, after its output streams have closed. */
@@ -19,7 +17,7 @@ export type CustomCommandResult =
   | { readonly kind: 'exited'; readonly exitCode: number }
   | { readonly kind: 'cancelled' }
 
-/** A running command owned by the application's command store. */
+/** A running command owned by the execution dialog. */
 export interface ICustomCommandExecution {
   /** Resolves on exit; rejects if the process could not start or was lost. */
   readonly result: Promise<CustomCommandResult>
@@ -35,10 +33,7 @@ function commandDurationKey(repositoryPath: string, command: ICustomCommand) {
 }
 
 function commandHash(command: ICustomCommand) {
-  return createHash('sha256')
-    .update(command.command)
-    .update(command.pushWithDesktop === true ? '\0desktop-push' : '')
-    .digest('hex')
+  return createHash('sha256').update(command.command).digest('hex')
 }
 
 /** Read the last successful duration for this command version and checkout. */
@@ -106,9 +101,7 @@ function isCustomCommand(value: unknown): value is ICustomCommand {
     'name' in value &&
     typeof value.name === 'string' &&
     'command' in value &&
-    typeof value.command === 'string' &&
-    (!('pushWithDesktop' in value) ||
-      typeof value.pushWithDesktop === 'boolean')
+    typeof value.command === 'string'
   )
 }
 
@@ -116,15 +109,6 @@ function isCustomCommand(value: unknown): value is ICustomCommand {
 export function getCustomCommandsValidationError(
   commands: ReadonlyArray<ICustomCommand>
 ): string | null {
-  if (
-    commands.some(
-      c =>
-        c.pushWithDesktop !== undefined &&
-        typeof c.pushWithDesktop !== 'boolean'
-    )
-  ) {
-    return 'The Desktop push setting must be a boolean.'
-  }
   if (
     commands.some(
       c => c.name.trim().length === 0 || c.command.trim().length === 0
@@ -216,12 +200,8 @@ export function serializeCustomCommands(
     JSON.stringify(
       {
         format: 'github-desktop-custom-commands',
-        version: commands.some(c => c.pushWithDesktop === true) ? 2 : 1,
-        commands: commands.map(({ name, command, pushWithDesktop }) => ({
-          name,
-          command,
-          ...(pushWithDesktop === true ? { pushWithDesktop: true } : {}),
-        })),
+        version: 1,
+        commands: commands.map(({ name, command }) => ({ name, command })),
       },
       null,
       2
@@ -231,7 +211,7 @@ export function serializeCustomCommands(
 
 function isSharedCommand(
   value: unknown
-): value is Pick<ICustomCommand, 'name' | 'command' | 'pushWithDesktop'> {
+): value is Pick<ICustomCommand, 'name' | 'command'> {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -240,9 +220,7 @@ function isSharedCommand(
     value.name.trim().length > 0 &&
     'command' in value &&
     typeof value.command === 'string' &&
-    value.command.trim().length > 0 &&
-    (!('pushWithDesktop' in value) ||
-      typeof value.pushWithDesktop === 'boolean')
+    value.command.trim().length > 0
   )
 }
 
@@ -258,14 +236,14 @@ export function importCustomCommandsFromJSON(
     !('format' in parsed) ||
     parsed.format !== 'github-desktop-custom-commands' ||
     !('version' in parsed) ||
-    (parsed.version !== 1 && parsed.version !== 2) ||
+    parsed.version !== 1 ||
     !('commands' in parsed) ||
     !Array.isArray(parsed.commands) ||
     parsed.commands.length === 0 ||
     !parsed.commands.every(isSharedCommand)
   ) {
     throw new Error(
-      'Choose a version 1 or 2 Custom commands JSON export containing nonempty command names and scripts.'
+      'Choose a version 1 Custom commands JSON export containing nonempty command names and scripts.'
     )
   }
 
@@ -277,12 +255,7 @@ export function importCustomCommandsFromJSON(
       name = `${entry.name.trim()} (${suffix++})`
     }
     usedNames.add(name.trim().toLowerCase())
-    return {
-      id: randomUUID(),
-      name,
-      command: entry.command,
-      ...(entry.pushWithDesktop === true ? { pushWithDesktop: true } : {}),
-    }
+    return { id: randomUUID(), name, command: entry.command }
   })
   return [...existing, ...imported]
 }
@@ -322,8 +295,7 @@ export function getCustomCommandArguments(
 export function startCustomCommand(
   repositoryPath: string,
   command: string,
-  onOutput: (chunk: Buffer) => void,
-  pushRequestPath?: string
+  onOutput: (chunk: Buffer) => void
 ): ICustomCommandExecution {
   if (!__WIN32__) {
     throw new Error('Custom commands are currently supported on Windows only.')
@@ -346,10 +318,6 @@ export function startCustomCommand(
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     shell: false,
-    env: {
-      ...process.env,
-      GITHUB_DESKTOP_PUSH_REQUEST: pushRequestPath,
-    },
   })
   child.stdout.on('data', onOutput)
   child.stderr.on('data', onOutput)

@@ -52,7 +52,6 @@ describe('custom commands', () => {
       version: 1,
       commands: [{ name: original[0].name, command: original[0].command }],
     })
-
     const imported = importCustomCommandsFromJSON('\uFEFF' + exported, [])
     assert.equal(imported[0].name, original[0].name)
     assert.equal(imported[0].command, original[0].command)
@@ -61,26 +60,6 @@ describe('custom commands', () => {
       importCustomCommandsFromJSON(exported, [])[0].id,
       imported[0].id
     )
-  })
-
-  it('roundtrips opt-in Desktop push with a versioned export and separate duration', async () => {
-    const command = { ...commands[0], pushWithDesktop: true }
-    const storage = createStorage()
-    saveCustomCommands(storage, 'repo', [command])
-    assert.deepEqual(getCustomCommands(storage, 'repo'), [command])
-    const exported = serializeCustomCommands([command])
-    assert.equal(JSON.parse(exported).version, 2)
-    assert.equal(
-      importCustomCommandsFromJSON(exported, [])[0].pushWithDesktop,
-      true
-    )
-    saveCustomCommandDuration(storage, 'repo', commands[0], 100)
-    assert.equal(getCustomCommandDuration(storage, 'repo', command), null)
-    storage.setItem(
-      'custom-commands:repo',
-      JSON.stringify([{ ...command, pushWithDesktop: 'yes' }])
-    )
-    assert.throws(() => getCustomCommands(storage, 'repo'), /invalid/)
   })
 
   it('appends imports with case-insensitive unique names without modifying existing entries', async () => {
@@ -140,7 +119,7 @@ describe('custom commands', () => {
       JSON.stringify({ format: 'other', version: 1, commands }),
       JSON.stringify({
         format: 'github-desktop-custom-commands',
-        version: 3,
+        version: 2,
         commands,
       }),
       ...[
@@ -401,17 +380,12 @@ describe('custom commands', () => {
       assert.ok(executable)
       assert.match(executable, /WindowsPowerShell\\v1\.0\\powershell\.exe$/i)
       assert.deepEqual(args, getCustomCommandArguments('Get-Location'))
-      assert.deepEqual(
-        { ...options, env: undefined },
-        {
-          cwd,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true,
-          shell: false,
-          env: undefined,
-        }
-      )
-      assert.equal(options?.env?.GITHUB_DESKTOP_PUSH_REQUEST, undefined)
+      assert.deepEqual(options, {
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        shell: false,
+      })
       const unicode = Buffer.from('\u4e16\u754c')
       child.stdout.emit('data', unicode.subarray(0, 2))
       child.stdout.emit('data', unicode.subarray(2))

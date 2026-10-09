@@ -1,10 +1,6 @@
 import * as Path from 'path'
 import { readFile, writeFile } from 'fs/promises'
 import {
-  CustomCommandStore,
-  isCustomCommandActive,
-} from './custom-command-store'
-import {
   CustomCommandScope,
   ICustomCommand,
   getCustomCommands,
@@ -15,10 +11,6 @@ import {
   serializeCustomCommands,
   importCustomCommandsFromJSON,
 } from '../custom-command'
-import {
-  pushCustomCommandRequest,
-  startCustomCommandWithDesktopPush,
-} from '../custom-command-push'
 import {
   AccountsStore,
   CloningRepositoriesStore,
@@ -348,8 +340,6 @@ import {
   popStashEntry,
   dropDesktopStashEntry,
   moveStashEntry,
-  applyRepositoryStash,
-  dropRepositoryStash,
 } from '../git/stash'
 import {
   UncommittedChangesStrategy,
@@ -619,10 +609,6 @@ const selectedCopilotModelsByAccountKey = 'selected-copilot-models-by-account'
 export const showChangesFilterDefault = true
 
 export class AppStore extends TypedBaseStore<IAppState> {
-  /** The one application-owned custom command, independent of popup lifetime. */
-  public readonly customCommandStore = new CustomCommandStore(() =>
-    this.emitUpdate()
-  )
   private readonly gitStoreCache: GitStoreCache
 
   private accounts: ReadonlyArray<Account> = new Array<Account>()
@@ -1310,7 +1296,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     return {
       accounts: this.accounts,
-      customCommandTask: this.customCommandStore.snapshot,
       repositories,
       recentRepositories: this.recentRepositories,
       localRepositoryStateLookup: this.localRepositoryStateLookup,
@@ -1499,7 +1484,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
         showCoAuthoredBy: gitStore.showCoAuthoredBy,
         coAuthors: gitStore.coAuthors,
         stashEntry,
-        repositoryStashes: gitStore.repositoryStashes,
       }
     })
 
@@ -7774,10 +7758,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
     scope: CustomCommandScope
   ): Promise<void> {
     try {
-      if (isCustomCommandActive(this.customCommandStore.snapshot)) {
-        await this._showCustomCommandTask()
-        return
-      }
       const command = getCustomCommands(
         localStorage,
         repository.path,
@@ -7788,33 +7768,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
           'This custom command no longer exists. Open Configure commands to update the list.'
         )
       }
-      this.customCommandStore.start(
+      await this._showPopup({
+        type: PopupType.RunCustomCommand,
         repository,
         command,
-        getCustomCommandDuration(localStorage, repository.path, command),
-        onOutput => this._executeCustomCommand(repository, command, onOutput)
-      )
-      await this._showCustomCommandTask()
-    } catch (error) {
-      this.emitError(error)
-    }
-  }
-
-  /** This shouldn't be called directly. See 'Dispatcher'. */
-  public async _showCustomCommandTask() {
-    if (
-      this.customCommandStore.snapshot !== null &&
-      this.popupManager.currentPopup?.type !== PopupType.RunCustomCommand
-    ) {
-      await this._showPopup({ type: PopupType.RunCustomCommand })
-    }
-  }
-
-  /** This shouldn't be called directly. See 'Dispatcher'. */
-  public _dismissCustomCommandResult() {
-    try {
-      this.customCommandStore.dismissResult()
-      this._closePopup(PopupType.RunCustomCommand)
+        expectedDurationMs: getCustomCommandDuration(
+          localStorage,
+          repository.path,
+          command
+        ),
+      })
     } catch (error) {
       this.emitError(error)
     }
@@ -7827,43 +7790,11 @@ export class AppStore extends TypedBaseStore<IAppState> {
     onOutput: (chunk: Buffer) => void
   ) {
     const startedAt = performance.now()
-    const execution =
-      command.pushWithDesktop === true
-        ? startCustomCommandWithDesktopPush(
-            repository.path,
-            command.command,
-            onOutput,
-            async request => {
-              if (
-                this.repositoryStateCache.get(repository)
-                  .isPushPullFetchInProgress
-              ) {
-                throw new Error(
-                  'Another network operation is running. Retry the command after it finishes.'
-                )
-              }
-              await this.withPushPullFetch(repository, async () => {
-                try {
-                  await pushCustomCommandRequest(
-                    repository,
-                    request,
-                    progress => {
-                      this.updatePushPullFetchProgress(repository, {
-                        ...progress,
-                        title: 'Pushing with Desktop',
-                        remote: 'origin',
-                        branch: request.branch,
-                      })
-                    }
-                  )
-                  await this._refreshRepository(repository)
-                } finally {
-                  this.updatePushPullFetchProgress(repository, null)
-                }
-              })
-            }
-          )
-        : startCustomCommand(repository.path, command.command, onOutput)
+    const execution = startCustomCommand(
+      repository.path,
+      command.command,
+      onOutput
+    )
     return {
       ...execution,
       result: execution.result.then(result => {
@@ -9341,33 +9272,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.statsStore.increment('stashRestoreCount')
     await this._refreshRepository(repository)
-  }
-
-  /** This shouldn't be called directly. See 'Dispatcher'. */
-  public async _applyRepositoryStash(repository: Repository, stashSha: string) {
-    try {
-      await applyRepositoryStash(repository, stashSha)
-    } finally {
-      // Reload even after a conflict so the existing Changes conflict UI is usable.
-      await this._refreshRepository(repository)
-    }
-  }
-
-  /** This shouldn't be called directly. See 'Dispatcher'. */
-  public async _deleteRepositoryStash(
-    repository: Repository,
-    stashSha: string
-  ) {
-    try {
-      await dropRepositoryStash(repository, stashSha)
-    } finally {
-      await this.gitStoreCache.get(repository).loadStashEntries()
-    }
-  }
-
-  /** This shouldn't be called directly. See 'Dispatcher'. */
-  public async _refreshRepositoryStashes(repository: Repository) {
-    await this.gitStoreCache.get(repository).loadStashEntries()
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */

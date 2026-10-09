@@ -70,7 +70,6 @@ export enum PopupType {
   StashAndSwitchBranch = 'StashAndSwitchBranch',
   ConfirmOverwriteStash = 'ConfirmOverwriteStash',
   ConfirmDiscardStash = 'ConfirmDiscardStash',
-  ConfirmRestoreRepositoryStash = 'ConfirmRestoreRepositoryStash',
   ConfirmCheckoutCommit = 'ConfirmCheckoutCommit',
   CreateTutorialRepository = 'CreateTutorialRepository',
   ConfirmExitTutorial = 'ConfirmExitTutorial',
@@ -139,6 +138,9 @@ interface IBasePopup {
 export type PopupDetail =
   | {
       type: PopupType.RunCustomCommand
+      repository: Repository
+      command: ICustomCommand
+      expectedDurationMs: number | null
     }
   | {
       type: PopupType.CustomCommand
@@ -301,12 +303,6 @@ export type PopupDetail =
     }
   | {
       type: PopupType.ConfirmDiscardStash
-      repository: Repository
-      stash: IStashEntry
-      allStashes?: boolean
-    }
-  | {
-      type: PopupType.ConfirmRestoreRepositoryStash
       repository: Repository
       stash: IStashEntry
     }

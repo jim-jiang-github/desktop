@@ -1672,17 +1672,7 @@ export class Dispatcher {
     return this.appStore._runCustomCommand(repository, id, scope)
   }
 
-  /** Restore the existing task without executing it again. */
-  public showCustomCommandTask(): Promise<void> {
-    return this.appStore._showCustomCommandTask()
-  }
-
-  /** Clear a finished command's result and output without affecting running tasks. */
-  public dismissCustomCommandResult(): void {
-    this.appStore._dismissCustomCommandResult()
-  }
-
-  /** Start the explicitly selected command and stream its output to its owner. */
+  /** Start the explicitly selected command and stream its output to its dialog. */
   public executeCustomCommand(
     repository: Repository,
     command: ICustomCommand,
@@ -2945,21 +2935,6 @@ export class Dispatcher {
   /** Pop the given stash in the given repository */
   public popStash(repository: Repository, stashEntry: IStashEntry) {
     return this.appStore._popStashEntry(repository, stashEntry)
-  }
-
-  /** Apply a selected stash without removing it, including on conflicts. */
-  public applyRepositoryStash(repository: Repository, stashSha: string) {
-    return this.appStore._applyRepositoryStash(repository, stashSha)
-  }
-
-  /** Delete a confirmed stash using a freshly resolved identity. */
-  public deleteRepositoryStash(repository: Repository, stashSha: string) {
-    return this.appStore._deleteRepositoryStash(repository, stashSha)
-  }
-
-  /** Refresh the shared stash list without fetching or changing the checkout. */
-  public refreshRepositoryStashes(repository: Repository) {
-    return this.appStore._refreshRepositoryStashes(repository)
   }
 
   /**

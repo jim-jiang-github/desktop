@@ -183,25 +183,8 @@ directly in an in-app execution panel, without opening an external console.
 
 The working directory is the selected checkout. The panel streams output and
 errors and reports
-success, a nonzero exit code, or a stopped command. Choose **Run in background**
-to hide the panel and keep using Desktop. Open the existing **Custom commands**
-menu and choose **Show command output** to restore the same task from any
-repository, with the original working directory and script. The menu retains
-this entry while running and after completion; there is no separate task bar
-or external restore button. The button's tooltip includes the task name, status
-and original working directory.
-When hiding the panel or when a background task finishes, **Custom commands** briefly
-highlights three times and displays a short hint. Reduced motion uses a static
-highlight instead. The hint disappears automatically or can be closed with its X;
-closing a hint never stops the command or clears its logs. For a finished task,
-closing its output panel with **Close**, **X**, or **Escape** clears the result,
-output and progress without showing another completion hint. You can also choose
-**Custom commands > Dismiss command result**. Closing a running command's panel
-keeps it running in the background; use **Stop command** to stop the process.
-The terminal retains 2,000 scrollback lines; background replay retains at most
-2,000 lines and 1 MiB of UTF-8 output. Older output beyond those limits is discarded.
-The latest background result and logs remain available until dismissed, another
-command starts or Desktop exits; logs are not persisted across application restarts.
+success, a nonzero exit code, or a stopped command. It retains the latest 2,000
+terminal scrollback lines until you close it.
 
 The first run shows an indeterminate progress animation. After a successful run,
 its duration is remembered locally for that command and checkout. Later runs
@@ -212,19 +195,8 @@ This is a time estimate, not measured build/task progress. Editing the command
 text or changing checkout requires learning a new duration. Failed or stopped
 runs do not replace the last successful duration.
 
-The current repository title and the task's repository-list row fill from left
-to right using the same estimate as the execution panel. Unknown durations
-animate instead (without animation when reduced motion is enabled).
-Switching repositories does not move the task or its working directory: only
-the original checkout's title shows progress. When switching worktrees, the
-owning repository row retains progress; its tooltip and the command menu button's
-tooltip identify the original working directory. Completion, failure or cancellation
-produces a temporary hint without opening a dialog or stealing focus.
-Only one custom command can run at a time.
-
 Choose **Stop command** to stop the command and its child processes. Stop it
-before exiting the app; Desktop blocks normal exit while the command is running,
-including when its panel is hidden. Windows PowerShell runs hidden, without a
+before closing the panel or the app. Windows PowerShell runs hidden, without a
 profile and in non-interactive mode; commands requiring terminal input are not
 supported. PowerShell errors stop execution, and native command exit codes are
 propagated to the panel.
@@ -242,75 +214,6 @@ Only run commands you trust: they have your Windows permissions. Do not save
 passwords or other secrets in commands. Use `cmd /c` for commands requiring CMD
 syntax instead of PowerShell syntax.
 
-### Browse all stashes in Custom
-
-The **Stashes (count)** tab opens the
-repository's complete stash list, including command-line stashes and entries
-from other branches. It reuses the left sidebar: stashes above, changed files
-below, with the diff on the right. Drag the divider or focus it and use the
-arrow keys to adjust the two lists. Switching back to **Changes** preserves
-the selected working files and commit draft.
-Select a stash to view its message, source branch (when available), creation time,
-files and diffs, including untracked files saved with `git stash -u`.
-Use the list's arrow keys to select entries. The refresh icon, application focus and
-periodic refresh while the browser is open pick up external stash changes.
-
-**Restore...** asks you to confirm the target worktree path, applies only the
-selected stash and **keeps the stash**, both on success and on conflict.
-Switch to **Changes** to review restored files or resolve conflicts.
-**Delete stash...** in the **...** menu always asks for confirmation and
-deletes only the selected entry. Stashes are shared by a
-repository's worktrees, so deleting one also removes it from the other worktrees.
-Selection uses commit identities instead of cached `stash@{n}` indices.
-Ambiguous duplicate commit entries are rejected rather than guessing which to
-delete. Safe deletion requires Git's standard files reference backend; other
-backends report an error and must be managed with Git.
-
-The Custom browser is independent of Desktop's existing automatic per-branch
-stash and branch-switching workflow. Merely viewing or selecting a stash does not
-replace the automatic stash or change the checkout.
-
-### Pushing a prepared release with Desktop
-
-Enable **Push prepared branch and tag with Desktop** for a trusted command to
-hand its final push to the same authenticated Git implementation used by
-**Push origin**. It uses the originating checkout's Desktop account selection,
-even if you switch repositories while the command runs. Tokens are not passed
-to PowerShell. This does not bypass expired credentials or missing write access.
-
-The script must not run `git push`. After preparing and validating its local
-commit and tag, it writes this JSON handoff and exits successfully:
-
-```powershell
-if ([string]::IsNullOrWhiteSpace($env:GITHUB_DESKTOP_PUSH_REQUEST)) {
-    throw 'Enable Push prepared branch and tag with Desktop in an updated Custom build.'
-}
-$request = @{
-    remoteURL = 'https://github.com/OWNER/REPOSITORY.git'
-    branch = $branch
-    commit = $versionCommit
-    tag = $newTag
-    tagObject = $tagObject
-} | ConvertTo-Json
-[IO.File]::WriteAllText($env:GITHUB_DESKTOP_PUSH_REQUEST, $request)
-exit 0
-```
-
-The guard belongs at the beginning of the script, before making changes.
-`commit` and `tagObject` must be full object IDs, not names such as `HEAD`.
-The origin must have exactly one fetch URL and one push URL matching `remoteURL`
-(HTTPS). The branch must still be checked out, the worktree clean, and the tag
-must still point to the prepared commit. Desktop atomically pushes just those
-two object IDs without force, then verifies both remote refs. Unrelated tags
-are not included. Failed preparation never pushes; failed push keeps the local
-commit and tag for a retry. Missing or invalid handoffs are errors, not success.
-
-The command remains running until Desktop finishes verification. **Stop command**
-can stop preparation; once the authenticated push begins, wait for its result.
-Stopping PowerShell cannot undo a remote push. The temporary handoff is deleted
-afterward. Only explicitly enabled commands receive a handoff path; ordinary
-command output cannot trigger a push.
-
 ### Sharing commands
 
 In either command configuration dialog, **Export selected...** saves the selected
@@ -325,18 +228,14 @@ such as `Build (2)`. Each imported command receives a new local identity.
 Review the scripts and choose **Save** to keep them, or **Cancel** to discard the
 draft. Neither importing nor exporting executes commands.
 
-The versioned JSON file contains command names, full PowerShell script text and
-the optional Desktop push setting, not local command IDs, repository paths,
-group assignments or execution
+The versioned JSON file contains only command names and full PowerShell script
+text, not local command IDs, repository paths, group assignments or execution
 history. Hard-coded paths and secrets inside the scripts are **not** removed.
 Review files before sharing or running them. Scripts referencing other local
 files still require those files on the recipient's machine. The recipient needs
 a Custom build with this import/export feature; official GitHub Desktop cannot
 import these files. Unsupported formats and invalid entries are rejected without
 changing the draft.
-Exports with Desktop push enabled use format version 2, so older Custom builds
-reject them instead of silently dropping the push step. Other exports remain
-version 1. Review the push setting as well as the script before saving an import.
 
 ## Local Custom Windows installer
 
@@ -399,26 +298,11 @@ Windows x64 installers in `jim-jiang-github/desktop`. It uses the Node version i
 or deployment infrastructure.
 
 Commit and push the workflow and all Custom source changes to your fork. Enable
-Actions in the fork if GitHub asks you to do so. Custom runs **only on a
-`custom-v*` tag push**: there is no manual **Run workflow** entry, branch-push
-build, or pull-request build. The build still checks types, lint, and packaging
-tests before producing installers.
-
-Only `custom-release.yml` remains in `.github/workflows`. The original upstream
-CI, code scanning, release helpers, and triage workflows (including the agentic
-triage source and generated YAML) are retained unchanged in
-`.github/upstream-workflows` for reference and upstream comparisons. GitHub does
-not execute workflows from that directory. Do not copy them back or regenerate
-the triage workflow in `.github/workflows` unless you intend to enable them.
-This fork layout does not change the official `desktop/desktop` repository.
-
-Local edits do not change the remote Actions configuration until committed and
-pushed. To stop existing non-Custom runs immediately, a repository administrator
-must disable those workflows and cancel their queued or running executions in
-the fork's Actions UI or API. Keep **Build and release Custom (Windows)** enabled
-and do not cancel its tag builds. Disabling a workflow does not by itself cancel
-an existing run; moving its source also does not stop an already-running run.
-Do not delete historical runs, releases, or tags.
+Actions in the fork if GitHub asks you to do so. To use **Actions > Build and
+release Custom (Windows) > Run workflow**, the workflow must also exist on the
+fork's default branch (`development`); select the branch containing your Custom
+changes when running it. Manual runs only build: download `custom-windows-x64`
+from the run's artifacts within 14 days.
 
 To create a release, push a tag matching **exactly** `custom-v` followed by the
 version in `app/package.json`, on the commit you want to ship. For example, for
@@ -437,13 +321,6 @@ source and, only after a successful build and checksum verification,
 `SHA256SUMS.txt`. Versions with a prerelease identifier (such as `-alpha1`,
 `-beta2`, or `-rc1`) are published as public prereleases; stable versions are
 published as normal releases. No draft or manual publish step is required.
-Pushing a tag is not the same as publishing a Release: while dependency
-installation, validation, or packaging is still running, the tag can exist
-without a Release or installers. Check the Custom workflow run (not another
-workflow's commit status). A failed build prevents publication; after the
-release job succeeds, the tag's Release must list the EXE, MSI, and checksums.
-The intermediate `custom-windows-x64` Actions artifact is retained for 14 days
-and is separate from the public Release assets.
 Review the source and version before pushing the tag. The job uses the
 automatically supplied `GITHUB_TOKEN` with `contents: write` only for the release
 job; no personal access token or custom secret is needed. Repository or

@@ -48,12 +48,7 @@ import { RepositoryView } from './repository'
 import { RenameBranch } from './rename-branch'
 import { CustomCommandDialog } from './custom-command/custom-command-dialog'
 import { CustomCommandRunDialog } from './custom-command/custom-command-run-dialog'
-import { CommandProgressBackground } from './custom-command/command-progress-background'
-import {
-  commandBelongsToRepository,
-  isCustomCommandActive,
-} from '../lib/stores/custom-command-store'
-import { CustomCommandMenuButton } from './custom-command/custom-command-menu-button'
+import { ToolbarButton } from './toolbar/button'
 import { DeleteBranch, DeleteRemoteBranch } from './delete-branch'
 import { CloningRepositoryView } from './cloning-repository'
 import {
@@ -125,7 +120,6 @@ import { Banner, BannerType } from '../models/banner'
 import { StashAndSwitchBranch } from './stash-changes/stash-and-switch-branch-dialog'
 import { OverwriteStash } from './stash-changes/overwrite-stashed-changes-dialog'
 import { ConfirmDiscardStashDialog } from './stashing/confirm-discard-stash'
-import { ConfirmRestoreStashDialog } from './stashing/confirm-restore-stash'
 import { ConfirmCheckoutCommitDialog } from './checkout/confirm-checkout-commit'
 import { CreateTutorialRepositoryDialog } from './no-repositories/create-tutorial-repository-dialog'
 import { ConfirmExitTutorial } from './tutorial'
@@ -1670,9 +1664,11 @@ export class App extends React.Component<IAppProps, IAppState> {
         return (
           <CustomCommandRunDialog
             key={`custom-command-run-${popup.id}`}
-            store={this.props.appStore.customCommandStore}
+            repository={popup.repository}
+            command={popup.command}
+            expectedDurationMs={popup.expectedDurationMs}
+            dispatcher={this.props.dispatcher}
             onDismissed={onPopupDismissedFn}
-            onDismissResult={this.onDismissCustomCommandResult}
           />
         )
       case PopupType.CustomCommand:
@@ -2273,11 +2269,10 @@ export class App extends React.Component<IAppProps, IAppState> {
         )
       }
       case PopupType.ConfirmDiscardStash: {
-        const { repository, stash, allStashes } = popup
+        const { repository, stash } = popup
 
         return (
           <ConfirmDiscardStashDialog
-            allStashes={allStashes}
             key="confirm-discard-stash-dialog"
             dispatcher={this.props.dispatcher}
             askForConfirmationOnDiscardStash={
@@ -2289,16 +2284,6 @@ export class App extends React.Component<IAppProps, IAppState> {
           />
         )
       }
-      case PopupType.ConfirmRestoreRepositoryStash:
-        return (
-          <ConfirmRestoreStashDialog
-            key="confirm-restore-repository-stash"
-            repository={popup.repository}
-            stash={popup.stash}
-            dispatcher={this.props.dispatcher}
-            onDismissed={onPopupDismissedFn}
-          />
-        )
       case PopupType.ConfirmCheckoutCommit: {
         const { repository, commit } = popup
 
@@ -3422,7 +3407,6 @@ export class App extends React.Component<IAppProps, IAppState> {
     const repositories = this.state.repositories
     return (
       <RepositoriesList
-        customCommandTask={this.state.customCommandTask}
         filterText={filterText}
         onFilterTextChanged={this.onRepositoryFilterTextChanged}
         selectedRepository={selectedRepository}
@@ -3584,7 +3568,6 @@ export class App extends React.Component<IAppProps, IAppState> {
 
     return (
       <ToolbarDropdown
-        buttonClassName="repository-command-progress"
         icon={icon}
         title={title}
         description={__DARWIN__ ? 'Current Repository' : 'Current repository'}
@@ -3595,15 +3578,7 @@ export class App extends React.Component<IAppProps, IAppState> {
         dropdownContentRenderer={this.renderRepositoryList}
         dropdownState={currentState}
         enableFocusTrap={enableFocusTrap}
-      >
-        <CommandProgressBackground
-          task={
-            commandBelongsToRepository(this.state.customCommandTask, repository)
-              ? this.state.customCommandTask
-              : null
-          }
-        />
-      </ToolbarDropdown>
+      />
     )
   }
 
@@ -3969,33 +3944,6 @@ export class App extends React.Component<IAppProps, IAppState> {
 
   private onCustomCommand = () => {
     const selection = this.state.selectedState
-    const taskItems: IMenuItem[] = []
-    if (this.state.customCommandTask) {
-      taskItems.push({
-        label: 'Show command output',
-        action: this.onShowCustomCommandTask,
-      })
-      if (!isCustomCommandActive(this.state.customCommandTask)) {
-        taskItems.push({
-          label: 'Dismiss command result',
-          action: this.onDismissCustomCommandResult,
-        })
-      }
-      taskItems.push({ type: 'separator' })
-    }
-    if (
-      selection?.type !== SelectionType.Repository &&
-      this.state.customCommandTask
-    ) {
-      showContextualMenu([
-        ...taskItems,
-        {
-          label: 'Select a repository to run or configure commands',
-          enabled: false,
-        },
-      ])
-      return
-    }
     if (selection?.type === SelectionType.Repository) {
       const repository = selection.repository
       const getItems = (
@@ -4016,7 +3964,6 @@ export class App extends React.Component<IAppProps, IAppState> {
           },
           ...commands.map(command => ({
             label: command.name.trim().replaceAll('&', '&&'),
-            enabled: !isCustomCommandActive(this.state.customCommandTask),
             action: () =>
               this.props.dispatcher.runCustomCommand(
                 repository,
@@ -4041,7 +3988,6 @@ export class App extends React.Component<IAppProps, IAppState> {
       const globalItems = getItems('global')
       if (repositoryItems !== null && globalItems !== null) {
         showContextualMenu([
-          ...taskItems,
           ...repositoryItems,
           { type: 'separator' },
           ...globalItems,
@@ -4050,19 +3996,11 @@ export class App extends React.Component<IAppProps, IAppState> {
     }
   }
 
-  private onShowCustomCommandTask = () => {
-    this.props.dispatcher.showCustomCommandTask()
-  }
-
-  private onDismissCustomCommandResult = () => {
-    this.props.dispatcher.dismissCustomCommandResult()
-  }
-
   private renderToolbar() {
     /**
      * No toolbar if we're in the blank slate view.
      */
-    if (this.inNoRepositoriesViewState() && !this.state.customCommandTask) {
+    if (this.inNoRepositoriesViewState()) {
       return null
     }
 
@@ -4077,15 +4015,15 @@ export class App extends React.Component<IAppProps, IAppState> {
         {this.renderBranchToolbarButton()}
         {this.renderPushPullToolbarButton()}
         {__WIN32__ && (
-          <CustomCommandMenuButton
-            task={this.state.customCommandTask}
-            isDialogOpen={
-              this.state.currentPopup?.type === PopupType.RunCustomCommand
-            }
-            onShowMenu={this.onCustomCommand}
+          <ToolbarButton
+            className="custom-command-button"
+            title="Custom commands"
+            description="Run or configure"
+            ariaHaspopup="menu"
+            icon={octicons.terminal}
+            onClick={this.onCustomCommand}
             disabled={
-              this.state.selectedState?.type !== SelectionType.Repository &&
-              !this.state.customCommandTask
+              this.state.selectedState?.type !== SelectionType.Repository
             }
           />
         )}

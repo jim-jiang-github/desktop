@@ -17,7 +17,6 @@ import {
   serializeCustomCommands,
 } from '../../../src/lib/custom-command'
 import { Repository } from '../../../src/models/repository'
-import { CustomCommandStore } from '../../../src/lib/stores/custom-command-store'
 import { CustomCommandDialog } from '../../../src/ui/custom-command/custom-command-dialog'
 import { DialogStackContext } from '../../../src/ui/dialog/dialog'
 import { fireEvent, render, screen, waitFor } from '../../helpers/ui/render'
@@ -407,29 +406,12 @@ describe('custom command dialog', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), {
       target: { value: 'Test' },
     })
-
     assert.match(screen.getByRole('alert').textContent ?? '', /different name/)
     assert.ok(
       screen
         .getByRole('button', { name: 'Save', exact: true })
         .hasAttribute('aria-disabled')
     )
-  })
-
-  it('enables Desktop push only for the selected command after saving', async () => {
-    const { calls, isDismissed } = setup()
-    const checkbox = screen.getByRole('checkbox', {
-      name: 'Push prepared branch and tag with Desktop',
-    })
-    assert.ok(checkbox instanceof HTMLInputElement)
-    assert.equal(checkbox.checked, false)
-    fireEvent.click(checkbox)
-    assert.ok(screen.getByText(/pushing a tag may publish a release/))
-    assert.equal(calls.length, 0)
-    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }))
-    await waitFor(() => assert.equal(isDismissed(), true))
-    assert.equal(calls[0].commands[0].pushWithDesktop, true)
-    assert.equal(calls[0].commands[1].pushWithDesktop, undefined)
   })
 
   it('keeps the editor open on failure so the command can be corrected', async () => {
@@ -492,25 +474,13 @@ describe('custom command dialog', () => {
       ),
     }
     let dismissed = false
-    const store = new CustomCommandStore(() => {})
-    store.start(repository, initialCommands[0], expectedDurationMs, onOutput =>
-      dispatcher.executeCustomCommand(repository, initialCommands[0], onOutput)
-    )
-    t.after(async () => {
-      resolveResult?.({ kind: 'cancelled' })
-      await result.then(
-        () => {},
-        () => {}
-      )
-    })
     const view = render(
       <DialogStackContext.Provider value={{ isTopMost: true }}>
         <CustomCommandRunDialog
-          store={store}
-          onDismissResult={() => {
-            store.dismissResult()
-            dismissed = true
-          }}
+          repository={repository}
+          command={initialCommands[0]}
+          expectedDurationMs={expectedDurationMs}
+          dispatcher={dispatcher}
           onDismissed={() => {
             dismissed = true
           }}
@@ -523,7 +493,6 @@ describe('custom command dialog', () => {
       stop,
       write,
       dispatcher,
-      store,
       isDismissed: () => dismissed,
       finish: (value: CustomCommandResult) => {
         assert.ok(resolveResult)
@@ -550,9 +519,7 @@ describe('custom command dialog', () => {
     const form = run.view.container.querySelector('form')
     assert.ok(form)
     fireEvent.submit(form)
-    assert.equal(run.isDismissed(), true)
-    assert.equal(run.store.snapshot?.status, 'running')
-    assert.equal(run.stop.mock.callCount(), 0)
+    assert.equal(run.isDismissed(), false)
     run.finish({ kind: 'exited', exitCode: 0 })
     await waitFor(() =>
       assert.match(
@@ -564,7 +531,6 @@ describe('custom command dialog', () => {
     assert.equal(run.dispatcher.executeCustomCommand.mock.callCount(), 1)
     fireEvent.submit(form)
     assert.equal(run.isDismissed(), true)
-    assert.equal(run.store.snapshot, null)
   })
 
   it('labels historical progress as estimated and never reaches 100 while still running', async t => {
@@ -595,56 +561,6 @@ describe('custom command dialog', () => {
     assert.equal(run.isDismissed(), false)
     assert.equal(run.write.mock.callCount(), 1)
   })
-
-  for (const result of [
-    { kind: 'exited', exitCode: 0 },
-    { kind: 'exited', exitCode: 7 },
-    { kind: 'cancelled' },
-  ] as const) {
-    for (const closeWith of ['button', 'header']) {
-      it(`clears ${JSON.stringify(
-        result
-      )} and its output when closed via ${closeWith}`, async t => {
-        const run = setupExecution(t)
-        const appeared = new Promise<void>(resolve => {
-          run.view.container.addEventListener(
-            'dialog-appeared',
-            () => resolve(),
-            { once: true }
-          )
-        })
-        run.output(Buffer.from('retained until closed'))
-        run.finish(result)
-        await appeared
-        assert.equal(
-          screen.getAllByRole('button', { name: 'Close', exact: true }).length,
-          2
-        )
-        if (closeWith === 'button') {
-          const submit = run.view.container.querySelector(
-            '.dialog-footer button[type="submit"]'
-          )
-          assert.ok(submit)
-          fireEvent.click(submit)
-        } else {
-          const close = run.view.container.querySelector(
-            '.dialog-header button'
-          )
-          assert.ok(close)
-          fireEvent.click(close)
-        }
-        assert.equal(run.isDismissed(), true)
-        assert.equal(run.store.snapshot, null)
-        const replay: string[] = []
-        const unsubscribe = run.store.subscribeOutput(chunk =>
-          replay.push(chunk)
-        )
-        unsubscribe()
-        assert.deepEqual(replay, [])
-        assert.equal(run.stop.mock.callCount(), 0)
-      })
-    }
-  }
 
   it('stops without closing and waits for confirmed cancellation', async t => {
     const run = setupExecution(t)
@@ -692,10 +608,10 @@ describe('custom command dialog', () => {
     setupExecution(t, null, new Error('PowerShell is unavailable'))
     assert.equal(
       screen.getByRole('status').textContent,
-      'PowerShell is unavailable'
+      'Could not run command'
     )
     assert.match(
-      screen.getByRole('status').textContent ?? '',
+      screen.getByRole('alert').textContent ?? '',
       /PowerShell is unavailable/
     )
     assert.equal(screen.queryByRole('progressbar'), null)
@@ -705,9 +621,12 @@ describe('custom command dialog', () => {
     const run = setupExecution(t)
     run.fail(new Error('ENOENT'))
     await waitFor(() =>
-      assert.match(screen.getByRole('status').textContent ?? '', /ENOENT/)
+      assert.match(screen.getByRole('alert').textContent ?? '', /ENOENT/)
     )
-    assert.equal(screen.getByRole('status').textContent, 'ENOENT')
+    assert.equal(
+      screen.getByRole('status').textContent,
+      'Could not run command'
+    )
   })
 
   it('prevents app closing while running and releases the guard on completion', async t => {
@@ -732,28 +651,10 @@ describe('custom command dialog', () => {
     assert.equal(finishedClosing.defaultPrevented, false)
   })
 
-  it('keeps running and replays background output when the execution dialog is restored', async t => {
+  it('stops its owned process when the execution dialog is unmounted', async t => {
     const run = setupExecution(t)
     run.view.unmount()
     unmount = undefined
-    assert.equal(run.stop.mock.callCount(), 0)
-    run.output(Buffer.from('output while hidden'))
-    const restored = render(
-      <CustomCommandRunDialog
-        store={run.store}
-        onDismissed={() => {}}
-        onDismissResult={() => run.store.dismissResult()}
-      />
-    )
-    unmount = restored.unmount
-    assert.equal(run.dispatcher.executeCustomCommand.mock.callCount(), 1)
-    const replay = run.write.mock.calls.at(-1)?.arguments[0]
-    assert.ok(replay)
-    assert.equal(replay.toString(), 'output while hidden')
-    const closing = new window.Event('beforeunload', { cancelable: true })
-    window.dispatchEvent(closing)
-    assert.equal(closing.defaultPrevented, true)
-    run.finish({ kind: 'exited', exitCode: 0 })
-    await waitFor(() => assert.equal(run.store.snapshot?.status, 'succeeded'))
+    assert.equal(run.stop.mock.callCount(), 1)
   })
 })

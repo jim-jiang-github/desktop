@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { afterEach, beforeEach, describe, it } from 'node:test'
+import { describe, it } from 'node:test'
 import { join, resolve } from 'path'
 import { copyFile, mkdir, readFile, writeFile } from 'fs/promises'
 import { execFile } from 'child_process'
@@ -21,22 +21,14 @@ import {
 
 describe('local Custom packaging', () => {
   const root = resolve(__dirname, '..')
-  const originalEnvironment = process.env
 
-  beforeEach(() => {
-    process.env = { ...originalEnvironment }
-  })
-  afterEach(() => {
-    process.env = originalEnvironment
-  })
-
-  it('isolates custom resources and installer identity without publishing', () => {
-    process.env = {
+  it('isolates custom resources and installer identity without publishing', t => {
+    t.mock.property(process, 'env', {
       ...process.env,
       NODE_ENV: 'production',
       RELEASE_CHANNEL: 'custom',
       npm_config_arch: 'x64',
-    }
+    })
     assert.equal(getProductName(), 'GitHub Desktop Custom')
     assert.equal(
       getWindowsIconPath(),
@@ -56,12 +48,12 @@ describe('local Custom packaging', () => {
     assert.equal(shouldMakeDelta(), false)
   })
 
-  it('leaves official production packaging unchanged', () => {
-    process.env = {
+  it('leaves official production packaging unchanged', t => {
+    t.mock.property(process, 'env', {
       ...process.env,
       NODE_ENV: 'production',
       RELEASE_CHANNEL: 'production',
-    }
+    })
     assert.equal(getProductName(), 'GitHub Desktop')
     assert.equal(
       getWindowsIconPath(),
@@ -75,12 +67,12 @@ describe('local Custom packaging', () => {
     assert.equal(shouldMakeDelta(), true)
   })
 
-  it('leaves development packaging unchanged', () => {
-    process.env = {
+  it('leaves development packaging unchanged', t => {
+    t.mock.property(process, 'env', {
       ...process.env,
       NODE_ENV: 'development',
       RELEASE_CHANNEL: 'development',
-    }
+    })
     assert.equal(getProductName(), 'GitHub Desktop-dev')
     assert.equal(
       getWindowsIconPath(),
