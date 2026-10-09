@@ -281,7 +281,7 @@ export class CommitMessageAvatar extends React.Component<
 
     const sharedHeader = (
       <>
-        The email in your global Git config (
+        The email in your Git config (
         <span className="git-email">{this.props.email}</span>)
       </>
     )

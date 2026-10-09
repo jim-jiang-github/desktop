@@ -10,9 +10,16 @@ import { Owner } from '../../../src/models/owner'
 import { RepoRulesInfo } from '../../../src/models/repo-rules'
 import { Repository } from '../../../src/models/repository'
 import {
+  getConfigValue,
+  getGlobalConfigValue,
+  setGlobalConfigValue,
+} from '../../../src/lib/git/config'
+import {
   AppFileStatusKind,
   WorkingDirectoryFileChange,
 } from '../../../src/models/status'
+import { isolateGitConfig } from '../../helpers/git-config'
+import { setupEmptyRepository } from '../../helpers/repositories'
 import { CommitMessage } from '../../../src/ui/changes/commit-message'
 
 const PreviewFeaturesEnv = 'GITHUB_DESKTOP_PREVIEW_FEATURES'
@@ -29,6 +36,7 @@ type CommitMessageTestInstance = {
   readonly onCopilotButtonClick: (
     event: Pick<React.MouseEvent<HTMLButtonElement>, 'preventDefault'>
   ) => Promise<void>
+  readonly onUpdateUserEmail: (email: string) => Promise<void>
 }
 
 function createAccount() {
@@ -177,6 +185,23 @@ afterEach(() => {
 })
 
 describe('CommitMessage', () => {
+  it('updates the commit email in the repository Git config', async t => {
+    await isolateGitConfig(t)
+    const repository = await setupEmptyRepository(t)
+    await setGlobalConfigValue('user.email', 'global@example.com')
+    const component = toTestInstance(
+      new CommitMessage(createProps({ repository }))
+    )
+
+    await component.onUpdateUserEmail('repository@example.com')
+
+    assert.equal(
+      await getConfigValue(repository, 'user.email', true),
+      'repository@example.com'
+    )
+    assert.equal(await getGlobalConfigValue('user.email'), 'global@example.com')
+  })
+
   it('does not allow cancelling commit message generation when the Copilot SDK is disabled', async () => {
     delete process.env[PreviewFeaturesEnv]
 
