@@ -31,7 +31,7 @@ export class WarningBeforeReset extends React.Component<
   }
 
   public render() {
-    const title = __DARWIN__ ? 'Reset to Commit' : 'Reset to commit'
+    const title = __DARWIN__ ? 'Soft Reset to Commit' : 'Soft reset to commit'
 
     return (
       <Dialog
@@ -47,9 +47,10 @@ export class WarningBeforeReset extends React.Component<
       >
         <DialogContent>
           <Row id="reset-warning-message">
-            You have changes in progress. Resetting to a previous commit might
-            result in some of these changes being lost. Do you want to continue
-            anyway?
+            This moves the current branch to the selected commit. Changes from
+            the commits being removed will remain staged and your working
+            directory will be preserved. If those commits have already been
+            pushed, you may need to force push. Do you want to continue?
           </Row>
         </DialogContent>
         <DialogFooter>

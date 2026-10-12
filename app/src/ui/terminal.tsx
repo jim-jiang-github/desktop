@@ -36,6 +36,36 @@ export class Terminal extends React.Component<TerminalProps> {
     }
   }
 
+  public getBufferContents(): string {
+    const buffer = this.terminal?.buffer.active
+    if (buffer === undefined) {
+      return ''
+    }
+
+    let lastNonEmptyLine = buffer.length - 1
+    while (
+      lastNonEmptyLine >= 0 &&
+      buffer.getLine(lastNonEmptyLine)?.translateToString(true) === ''
+    ) {
+      lastNonEmptyLine--
+    }
+
+    let contents = ''
+    for (let index = 0; index <= lastNonEmptyLine; index++) {
+      const line = buffer.getLine(index)
+      if (line === undefined) {
+        continue
+      }
+
+      if (index > 0 && !line.isWrapped) {
+        contents += '\n'
+      }
+      contents += line.translateToString(true)
+    }
+
+    return contents
+  }
+
   public componentWillUnmount(): void {
     this.terminal?.dispose()
   }

@@ -339,6 +339,8 @@ import {
   getLastDesktopStashEntryForBranch,
   popStashEntry,
   dropDesktopStashEntry,
+  applyRepositoryStash,
+  dropRepositoryStash,
   moveStashEntry,
 } from '../git/stash'
 import {
@@ -5896,13 +5898,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     showConfirmationDialog: boolean
   ): Promise<void> {
     const gitStore = this.gitStoreCache.get(repository)
-    const repositoryState = this.repositoryStateCache.get(repository)
-    const { changesState } = repositoryState
-    const isWorkingDirectoryClean =
-      changesState.workingDirectory.files.length === 0
-
-    // Warn the user if there are changes in the working directory
-    if (showConfirmationDialog && !isWorkingDirectoryClean) {
+    if (showConfirmationDialog) {
       return this._showPopup({
         type: PopupType.WarningBeforeReset,
         repository,
@@ -5917,10 +5913,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     )
 
     await gitStore.performFailableOperation(() =>
-      reset(repository, GitResetMode.Mixed, commit.sha)
+      reset(repository, GitResetMode.Soft, commit.sha)
     )
-
-    // this.statsStore.recordCommitUndone(isWorkingDirectoryClean)
 
     return this._refreshRepository(repository)
   }
@@ -9289,6 +9283,26 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.statsStore.increment('stashDiscardCount')
     await gitStore.loadStashEntries()
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _refreshRepositoryStashes(repository: Repository) {
+    await this.gitStoreCache.get(repository).loadStashEntries()
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _applyRepositoryStash(repository: Repository, stashSha: string) {
+    await applyRepositoryStash(repository, stashSha)
+    await this._refreshRepository(repository)
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _deleteRepositoryStash(
+    repository: Repository,
+    stashSha: string
+  ) {
+    await dropRepositoryStash(repository, stashSha)
+    await this.gitStoreCache.get(repository).loadStashEntries()
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */

@@ -2932,6 +2932,21 @@ export class Dispatcher {
     return this.appStore._dropStashEntry(repository, stashEntry)
   }
 
+  /** Refresh all stash entries for a repository. */
+  public refreshRepositoryStashes(repository: Repository) {
+    return this.appStore._refreshRepositoryStashes(repository)
+  }
+
+  /** Apply a repository stash without dropping it. */
+  public applyRepositoryStash(repository: Repository, stashSha: string) {
+    return this.appStore._applyRepositoryStash(repository, stashSha)
+  }
+
+  /** Delete a repository stash by its immutable commit ID. */
+  public deleteRepositoryStash(repository: Repository, stashSha: string) {
+    return this.appStore._deleteRepositoryStash(repository, stashSha)
+  }
+
   /** Pop the given stash in the given repository */
   public popStash(repository: Repository, stashEntry: IStashEntry) {
     return this.appStore._popStashEntry(repository, stashEntry)

@@ -120,6 +120,7 @@ import { Banner, BannerType } from '../models/banner'
 import { StashAndSwitchBranch } from './stash-changes/stash-and-switch-branch-dialog'
 import { OverwriteStash } from './stash-changes/overwrite-stashed-changes-dialog'
 import { ConfirmDiscardStashDialog } from './stashing/confirm-discard-stash'
+import { ConfirmRestoreStashDialog } from './stashing/confirm-restore-stash'
 import { ConfirmCheckoutCommitDialog } from './checkout/confirm-checkout-commit'
 import { CreateTutorialRepositoryDialog } from './no-repositories/create-tutorial-repository-dialog'
 import { ConfirmExitTutorial } from './tutorial'
@@ -2269,7 +2270,7 @@ export class App extends React.Component<IAppProps, IAppState> {
         )
       }
       case PopupType.ConfirmDiscardStash: {
-        const { repository, stash } = popup
+        const { repository, stash, allStashes } = popup
 
         return (
           <ConfirmDiscardStashDialog
@@ -2278,6 +2279,19 @@ export class App extends React.Component<IAppProps, IAppState> {
             askForConfirmationOnDiscardStash={
               this.state.askForConfirmationOnDiscardStash
             }
+            repository={repository}
+            stash={stash}
+            allStashes={allStashes}
+            onDismissed={onPopupDismissedFn}
+          />
+        )
+      }
+      case PopupType.ConfirmRestoreRepositoryStash: {
+        const { repository, stash } = popup
+        return (
+          <ConfirmRestoreStashDialog
+            key="confirm-restore-repository-stash"
+            dispatcher={this.props.dispatcher}
             repository={repository}
             stash={stash}
             onDismissed={onPopupDismissedFn}

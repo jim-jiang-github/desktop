@@ -295,7 +295,8 @@ export function getCustomCommandArguments(
 export function startCustomCommand(
   repositoryPath: string,
   command: string,
-  onOutput: (chunk: Buffer) => void
+  onOutput: (chunk: Buffer) => void,
+  pushRequestPath?: string
 ): ICustomCommandExecution {
   if (!__WIN32__) {
     throw new Error('Custom commands are currently supported on Windows only.')
@@ -318,6 +319,14 @@ export function startCustomCommand(
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     shell: false,
+    ...(pushRequestPath === undefined
+      ? {}
+      : {
+          env: {
+            ...process.env,
+            GITHUB_DESKTOP_PUSH_REQUEST: pushRequestPath,
+          },
+        }),
   })
   child.stdout.on('data', onOutput)
   child.stderr.on('data', onOutput)

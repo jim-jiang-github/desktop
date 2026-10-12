@@ -30,6 +30,33 @@
     background: #000;
     border-radius: var(--border-radius);
     overflow-x: auto;
+
+    .xterm,
+    .xterm * {
+      user-select: text;
+    }
+  }
+
+  .command-output-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: var(--spacing);
+  }
+
+  .command-output-copy-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: var(--spacing-half);
+    border: 0;
+    background: transparent;
+    color: #fff;
+
+    &:not([aria-disabled='true']):hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
   }
 
   .command-run-hint {

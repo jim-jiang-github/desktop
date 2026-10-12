@@ -533,6 +533,37 @@ describe('custom command dialog', () => {
     assert.equal(run.isDismissed(), true)
   })
 
+  it('copies the terminal output to the clipboard', async t => {
+    const getBufferContents = t.mock.method(
+      Terminal.prototype,
+      'getBufferContents',
+      () => 'command output'
+    )
+    const { ipcRenderer } = await import('electron')
+    const invoke = t.mock.method(ipcRenderer, 'invoke', async () => {})
+    setupExecution(t)
+
+    assert.ok(
+      screen
+        .getByRole('region', { name: 'Command output' })
+        .classList.contains('selectable-text')
+    )
+    const copyButton = screen.getByRole('button', {
+      name: 'Copy command output',
+    })
+    const copyIcon = copyButton.querySelector('svg')?.innerHTML
+    fireEvent.click(copyButton)
+
+    await waitFor(() =>
+      assert.deepEqual(invoke.mock.calls[0]?.arguments, [
+        'write-clipboard-text',
+        'command output',
+      ])
+    )
+    assert.equal(getBufferContents.mock.callCount(), 1)
+    assert.notEqual(copyButton.querySelector('svg')?.innerHTML, copyIcon)
+  })
+
   it('labels historical progress as estimated and never reaches 100 while still running', async t => {
     const run = setupExecution(t, 1)
     await waitFor(() =>

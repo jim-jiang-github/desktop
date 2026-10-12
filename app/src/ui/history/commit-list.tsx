@@ -730,11 +730,9 @@ export class CommitList extends React.Component<
     const canBeUndone =
       this.props.canUndoCommits === true && isLocal && row === 0
     const canBeAmended = this.props.canAmendCommits === true && row === 0
-    // The user can reset to any commit up to the first non-local one (included).
-    // They cannot reset to the most recent commit... because they're already
-    // in it.
-    const isResettableCommit =
-      row > 0 && row <= this.props.localCommitSHAs.length
+    // The user can soft reset to any previous commit in the current history.
+    // They cannot reset to the most recent commit because they're already in it.
+    const isResettableCommit = row > 0
     const canBeResetTo =
       this.props.canResetToCommits === true && isResettableCommit
     const canBeCheckedOut = row > 0 //Cannot checkout the current commit
@@ -771,7 +769,7 @@ export class CommitList extends React.Component<
     }
 
     items.push({
-      label: __DARWIN__ ? 'Reset to Commit…' : 'Reset to commit…',
+      label: __DARWIN__ ? 'Soft Reset to Commit…' : 'Soft reset to commit…',
       action: () => {
         if (this.props.onResetToCommit) {
           this.props.onResetToCommit(commit)

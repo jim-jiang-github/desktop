@@ -5,13 +5,43 @@ import * as path from 'path'
 import { Repository } from '../../../src/models/repository'
 import { reset, resetPaths, GitResetMode } from '../../../src/lib/git/reset'
 import { getStatusOrThrow } from '../../helpers/status'
-import { setupFixtureRepository } from '../../helpers/repositories'
+import {
+  setupEmptyRepository,
+  setupFixtureRepository,
+} from '../../helpers/repositories'
+import { makeCommit } from '../../helpers/repository-scaffolding'
 import { exec } from 'dugite'
 
 import { unlink, writeFile } from 'fs/promises'
 
 describe('git/reset', () => {
   describe('reset', () => {
+    it('soft resets a repository and keeps changes staged', async t => {
+      const repository = await setupEmptyRepository(t)
+      await makeCommit(repository, {
+        entries: [{ path: 'README.md', contents: 'first commit\n' }],
+      })
+      const firstCommit = await exec(['rev-parse', 'HEAD'], repository.path)
+      await makeCommit(repository, {
+        entries: [{ path: 'README.md', contents: 'second commit\n' }],
+      })
+
+      await reset(repository, GitResetMode.Soft, firstCommit.stdout.trim())
+
+      const currentCommit = await exec(['rev-parse', 'HEAD'], repository.path)
+      assert.equal(currentCommit.stdout.trim(), firstCommit.stdout.trim())
+      const stagedDiff = await exec(
+        ['diff', '--cached', '--exit-code'],
+        repository.path
+      )
+      const workingTreeDiff = await exec(
+        ['diff', '--exit-code'],
+        repository.path
+      )
+      assert.equal(stagedDiff.exitCode, 1)
+      assert.equal(workingTreeDiff.exitCode, 0)
+    })
+
     it('can hard reset a repository', async t => {
       const testRepoPath = await setupFixtureRepository(t, 'test-repo')
       const repository = new Repository(testRepoPath, -1, null, false)

@@ -9,7 +9,11 @@ import { Repository } from '../../models/repository'
 import { Dispatcher } from '../dispatcher'
 import { Dialog, DialogContent, DialogFooter } from '../dialog'
 import { Button } from '../lib/button'
+import { AriaLiveContainer } from '../accessibility/aria-live-container'
+import { Octicon } from '../octicons'
+import * as octicons from '../octicons/octicons.generated'
 import { Terminal } from '../terminal'
+import { writeClipboardText } from '../main-process-proxy'
 
 interface ICustomCommandRunDialogProps {
   readonly repository: Repository
@@ -42,6 +46,8 @@ export function CustomCommandRunDialog({
   const [state, setState] = React.useState<RunState>({ kind: 'running' })
   const [stopError, setStopError] = React.useState<string | null>(null)
   const [closeWarning, setCloseWarning] = React.useState(false)
+  const [copied, setCopied] = React.useState(false)
+  const copyTimeout = React.useRef<number | null>(null)
   const startedAt = React.useRef(performance.now())
   const [elapsedMs, setElapsedMs] = React.useState(0)
   const active = state.kind === 'running' || state.kind === 'stopping'
@@ -55,6 +61,15 @@ export function CustomCommandRunDialog({
     }, 100)
     return () => window.clearInterval(timer)
   }, [active])
+
+  React.useEffect(
+    () => () => {
+      if (copyTimeout.current !== null) {
+        window.clearTimeout(copyTimeout.current)
+      }
+    },
+    []
+  )
 
   React.useEffect(() => {
     let mounted = true
@@ -122,6 +137,20 @@ export function CustomCommandRunDialog({
       onDismissed()
     }
   }, [active, onDismissed])
+
+  const onCopyOutput = React.useCallback(async () => {
+    const contents = terminal.current?.getBufferContents()
+    if (contents !== undefined && (await writeClipboardText(contents))) {
+      setCopied(true)
+      if (copyTimeout.current !== null) {
+        window.clearTimeout(copyTimeout.current)
+      }
+      copyTimeout.current = window.setTimeout(() => {
+        copyTimeout.current = null
+        setCopied(false)
+      }, 2000)
+    }
+  }, [])
 
   const failed =
     state.kind === 'error' ||
@@ -196,10 +225,25 @@ export function CustomCommandRunDialog({
           </div>
         )}
         <div
-          className="command-output"
+          className="command-output selectable-text"
           role="region"
           aria-label="Command output"
         >
+          <div className="command-output-toolbar">
+            <Button
+              type="button"
+              className="command-output-copy-button"
+              ariaLabel="Copy command output"
+              tooltip={copied ? 'Copied!' : 'Copy command output'}
+              onClick={onCopyOutput}
+            >
+              <Octicon symbol={copied ? octicons.check : octicons.copy} />
+            </Button>
+            <AriaLiveContainer
+              message={copied ? 'Copied!' : ''}
+              trackedUserInput={copied}
+            />
+          </div>
           <Terminal
             ref={terminal}
             hideCursor={true}
