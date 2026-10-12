@@ -1486,6 +1486,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
         showCoAuthoredBy: gitStore.showCoAuthoredBy,
         coAuthors: gitStore.coAuthors,
         stashEntry,
+        repositoryStashes: gitStore.repositoryStashes,
       }
     })
 

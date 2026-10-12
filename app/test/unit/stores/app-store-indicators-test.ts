@@ -4,6 +4,10 @@ import type { AppStore } from '../../../src/lib/stores/app-store'
 import type { TestStatsDatabase } from '../../helpers/databases/test-stats-database'
 import { CloningRepository } from '../../../src/models/cloning-repository'
 import { Repository } from '../../../src/models/repository'
+import {
+  IRepositoryStashEntry,
+  StashedChangesLoadStates,
+} from '../../../src/models/stash-entry'
 
 describe('AppStore repository indicators', () => {
   let appStore: AppStore
@@ -19,6 +23,7 @@ describe('AppStore repository indicators', () => {
       namedExports: {
         ...(await import('../../../src/ui/main-process-proxy')),
         getAppMenu: () => {},
+        updateMenuState: () => {},
       },
     })
     const { AppStore } = await import('../../../src/lib/stores/app-store')
@@ -145,6 +150,43 @@ describe('AppStore repository indicators', () => {
     assert.deepStrictEqual(
       appStore['repositoryIndicatorUpdater']['getRepositories'](),
       repositories
+    )
+  })
+
+  it('synchronizes all repository stashes into the state used by the stash tab', t => {
+    const repository = new Repository(
+      'C:\\repositories\\stashes',
+      10,
+      null,
+      false
+    )
+    const gitStore = appStore['gitStoreCache'].get(repository)
+    const entry: IRepositoryStashEntry = {
+      name: 'refs/stash@{0}',
+      stashSha: '1'.repeat(40),
+      branchName: 'development',
+      message: 'On development: saved changes',
+      createdAt: Date.now(),
+      isDesktopStash: true,
+      tree: '2'.repeat(40),
+      parents: ['3'.repeat(40)],
+      files: { kind: StashedChangesLoadStates.NotLoaded },
+    }
+    const entries: ReadonlyArray<IRepositoryStashEntry> = [entry]
+    const stashes = t.mock.getter(gitStore, 'repositoryStashes', () => entries)
+    appStore['onGitStoreUpdated'](repository, gitStore)
+    assert.deepStrictEqual(
+      appStore['repositoryStateCache'].get(repository).changesState
+        .repositoryStashes,
+      entries
+    )
+
+    stashes.mock.mockImplementation(() => [])
+    appStore['onGitStoreUpdated'](repository, gitStore)
+    assert.deepStrictEqual(
+      appStore['repositoryStateCache'].get(repository).changesState
+        .repositoryStashes,
+      []
     )
   })
 })
