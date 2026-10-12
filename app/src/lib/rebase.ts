@@ -5,7 +5,7 @@ import { clamp } from './clamp'
 
 /** Represents the force-push availability state of a branch. */
 export enum ForcePushBranchState {
-  /** The branch cannot be force-pushed (it hasn't diverged from its upstream) */
+  /** There are no upstream commits to overwrite, or no upstream is configured. */
   NotAvailable,
 
   /**
@@ -45,10 +45,9 @@ export function getCurrentBranchForcePushState(
     return ForcePushBranchState.NotAvailable
   }
 
-  const { ahead, behind } = aheadBehind
+  const { behind } = aheadBehind
 
-  if (behind === 0 || ahead === 0) {
-    // no a diverged branch to force push
+  if (behind === 0) {
     return ForcePushBranchState.NotAvailable
   }
 
