@@ -5,6 +5,7 @@ import { copyFile, mkdir, readFile, writeFile } from 'fs/promises'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { createHash } from 'crypto'
+import which from 'which'
 import { createTempDirectory } from '../app/test/helpers/temp'
 import { getBundleID, getProductName } from '../app/package-info'
 import {
@@ -143,10 +144,16 @@ describe('local Custom packaging', () => {
         join(fixture, 'stage.ps1'),
         `$ErrorActionPreference = 'Stop'\n${stagingScript}`
       )
+      const pwshBin =
+        (await which('pwsh').catch(() => null)) ??
+        (await which('powershell.exe').catch(() => null)) ??
+        'powershell.exe'
+      const cleanEnv = { ...process.env }
+      delete cleanEnv.PSModulePath
       await promisify(execFile)(
-        'powershell.exe',
+        pwshBin,
         ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'stage.ps1'],
-        { cwd: fixture, windowsHide: true }
+        { cwd: fixture, windowsHide: true, env: cleanEnv }
       )
       const assets = join(fixture, 'release-assets')
       assert.equal(await readFile(join(assets, packageName), 'utf8'), 'package')
@@ -202,6 +209,8 @@ for (const ext of ['exe', 'msi']) {
 `
         )
         const quote = (value: string) => `'${value.replaceAll("'", "''")}'`
+        const cleanEnv = { ...process.env }
+        delete cleanEnv.PSModulePath
         const result = promisify(execFile)(
           join(
             process.env.SystemRoot ?? 'C:\\Windows',
@@ -219,7 +228,7 @@ for (const ext of ['exe', 'msi']) {
               process.execPath
             )} *> build.log; exit $LASTEXITCODE`,
           ],
-          { cwd: fixture, windowsHide: true }
+          { cwd: fixture, windowsHide: true, env: cleanEnv }
         )
         if (buildExitCode === 0) {
           await result
