@@ -149,8 +149,6 @@ interface IRepositoryViewState {
   readonly compareListScrollTop: number
   readonly stashRepositoryPath: string | null
   readonly stashSidebarHost: HTMLDivElement | null
-  readonly stashSidebarWidth: number | null
-  readonly isNarrow: boolean
 }
 
 const enum Tab {
@@ -184,8 +182,6 @@ export class RepositoryView extends React.Component<
       compareListScrollTop: 0,
       stashRepositoryPath: null,
       stashSidebarHost: null,
-      stashSidebarWidth: null,
-      isNarrow: window.innerWidth < 1100,
     }
   }
 
@@ -420,18 +416,10 @@ export class RepositoryView extends React.Component<
   }
 
   private handleSidebarWidthReset = () => {
-    if (this.isShowingStashes) {
-      this.setState({ stashSidebarWidth: null })
-      return
-    }
     this.props.dispatcher.resetSidebarWidth()
   }
 
   private handleSidebarResize = (width: number) => {
-    if (this.isShowingStashes) {
-      this.setState({ stashSidebarWidth: width })
-      return
-    }
     this.props.dispatcher.setSidebarWidth(width)
   }
 
@@ -440,15 +428,9 @@ export class RepositoryView extends React.Component<
       <FocusContainer onFocusWithinChanged={this.onSidebarFocusWithinChanged}>
         <Resizable
           id="repository-sidebar"
-          width={
-            this.isShowingStashes
-              ? this.stashSidebarWidth
-              : this.props.sidebarWidth.value
-          }
+          width={this.props.sidebarWidth.value}
           maximumWidth={this.props.sidebarWidth.max}
-          minimumWidth={
-            this.isShowingStashes ? 260 : this.props.sidebarWidth.min
-          }
+          minimumWidth={this.props.sidebarWidth.min}
           onReset={this.handleSidebarWidthReset}
           onResize={this.handleSidebarResize}
           description="Repository sidebar"
@@ -718,12 +700,10 @@ export class RepositoryView extends React.Component<
 
   public componentDidMount() {
     window.addEventListener('keydown', this.onGlobalKeyDown)
-    window.addEventListener('resize', this.onWindowResize)
   }
 
   public componentWillUnmount() {
     window.removeEventListener('keydown', this.onGlobalKeyDown)
-    window.removeEventListener('resize', this.onWindowResize)
   }
 
   public componentDidUpdate(prevProps: IRepositoryViewProps): void {
@@ -810,14 +790,6 @@ export class RepositoryView extends React.Component<
     )
   }
 
-  private get stashSidebarWidth() {
-    return this.state.stashSidebarWidth ?? (this.state.isNarrow ? 260 : 300)
-  }
-
-  private onWindowResize = () => {
-    this.setState({ isNarrow: window.innerWidth < 1100 })
-  }
-
   private onShowStashes = () => {
     this.setState({ stashRepositoryPath: this.props.repository.path })
   }
@@ -836,7 +808,7 @@ export class RepositoryView extends React.Component<
       <RepositoryStashBrowser
         key={this.props.repository.path}
         sidebarHost={this.state.stashSidebarHost}
-        sidebarWidth={this.stashSidebarWidth}
+        sidebarWidth={clamp(this.props.sidebarWidth) - 1}
         entries={this.props.state.changesState.repositoryStashes}
         imageDiffType={this.props.imageDiffType}
         repository={this.props.repository}

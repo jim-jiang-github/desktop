@@ -5879,7 +5879,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public async _resetToCommit(
     repository: Repository,
     commit: Commit,
-    showConfirmationDialog: boolean
+    showConfirmationDialog: boolean,
+    mode: GitResetMode = GitResetMode.Soft
   ): Promise<void> {
     const gitStore = this.gitStoreCache.get(repository)
     if (showConfirmationDialog) {
@@ -5887,17 +5888,20 @@ export class AppStore extends TypedBaseStore<IAppState> {
         type: PopupType.WarningBeforeReset,
         repository,
         commit,
+        mode,
       })
     }
 
-    // Make sure we show the changes after resetting to the commit
-    await this._changeRepositorySection(
-      repository,
-      RepositorySectionTab.Changes
-    )
+    if (mode === GitResetMode.Soft) {
+      // Make sure we show the changes after resetting to the commit
+      await this._changeRepositorySection(
+        repository,
+        RepositorySectionTab.Changes
+      )
+    }
 
     await gitStore.performFailableOperation(() =>
-      reset(repository, GitResetMode.Soft, commit.sha)
+      reset(repository, mode, commit.sha)
     )
 
     return this._refreshRepository(repository)

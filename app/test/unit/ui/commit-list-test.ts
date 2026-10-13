@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import * as React from 'react'
+import { GitResetMode } from '../../../src/lib/git/reset'
 import { IMenuItem } from '../../../src/lib/menu-item'
 import { Commit } from '../../../src/models/commit'
 import { CommitIdentity } from '../../../src/models/commit-identity'
@@ -27,6 +28,7 @@ describe('CommitList', () => {
       [],
       []
     )
+    let resetCall: { commit: Commit; mode?: GitResetMode } | null = null
     const list = new CommitList({
       gitHubRepository: null,
       commitSHAs: ['head-sha', commit.sha],
@@ -40,13 +42,34 @@ describe('CommitList', () => {
       preferAbsoluteDates: true,
       disableReordering: false,
       isMultiCommitOperationInProgress: false,
-      onResetToCommit: () => {},
+      onResetToCommit: (c, m) => {
+        resetCall = { commit: c, mode: m }
+      },
     } as React.ComponentProps<typeof CommitList>) as unknown as CommitListTestInstance
 
-    const resetItem = list
+    const softResetItem = list
       .getContextMenuForSingleCommit(1, commit)
-      .find(item => item.label === 'Soft reset to commit…')
+      .find(
+        item =>
+          item.label === 'Soft reset to commit…' ||
+          item.label === 'Soft Reset to Commit…'
+      )
 
-    assert.equal(resetItem?.enabled, true)
+    assert.equal(softResetItem?.enabled, true)
+    softResetItem?.action?.()
+    assert.deepEqual(resetCall, { commit, mode: GitResetMode.Soft })
+
+    const hardResetItem = list
+      .getContextMenuForSingleCommit(1, commit)
+      .find(
+        item =>
+          item.label === 'Hard reset to commit…' ||
+          item.label === 'Hard Reset to Commit…'
+      )
+
+    assert.equal(hardResetItem?.enabled, true)
+    resetCall = null
+    hardResetItem?.action?.()
+    assert.deepEqual(resetCall, { commit, mode: GitResetMode.Hard })
   })
 })

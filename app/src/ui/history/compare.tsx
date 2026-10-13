@@ -28,6 +28,7 @@ import { AheadBehindStore } from '../../lib/stores/ahead-behind-store'
 import { DragType } from '../../models/drag-drop'
 import { PopupType } from '../../models/popup'
 import { getUniqueCoauthorsAsAuthors } from '../../lib/unique-coauthors-as-authors'
+import { GitResetMode } from '../../lib/git/reset'
 import { getSquashedCommitDescription } from '../../lib/squash/squashed-commit-description'
 import { doMergeCommitsExistAfterCommit } from '../../lib/git'
 import { KeyboardInsertionData } from '../lib/list'
@@ -616,8 +617,16 @@ export class CompareSidebar extends React.Component<
     this.props.dispatcher.undoCommit(this.props.repository, commit)
   }
 
-  private onResetToCommit = (commit: Commit) => {
-    this.props.dispatcher.resetToCommit(this.props.repository, commit)
+  private onResetToCommit = (
+    commit: Commit,
+    mode: GitResetMode = GitResetMode.Soft
+  ) => {
+    this.props.dispatcher.resetToCommit(
+      this.props.repository,
+      commit,
+      true,
+      mode
+    )
   }
 
   private onCreateBranch = (commit: CommitOneLine) => {
