@@ -231,7 +231,7 @@ export class About extends React.Component<IAboutProps> {
   }
 
   private renderBetaLink() {
-    if (__RELEASE_CHANNEL__ === 'beta') {
+    if (__RELEASE_CHANNEL__ === 'beta' || __RELEASE_CHANNEL__ === 'custom') {
       return
     }
 

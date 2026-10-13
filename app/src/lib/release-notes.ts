@@ -11,6 +11,10 @@ import { formatDate } from './format-date'
 import { offsetFromNow } from './offset-from'
 import { encodePathAsUrl } from './path'
 import { getUserAgent } from './http'
+import {
+  comparableVersion,
+  parseCustomReleaseMetadata,
+} from './custom-update-feed'
 
 // expects a release note entry to contain a header and then some text
 // example:
@@ -92,6 +96,28 @@ export function getReleaseSummary(
 export async function getChangeLog(
   limit?: number
 ): Promise<ReadonlyArray<ReleaseMetadata>> {
+  if (__RELEASE_CHANNEL__ === 'custom') {
+    try {
+      const perPage = Math.min(Math.max(limit ?? 30, 1), 100)
+      const response = await fetch(
+        `https://api.github.com/repos/jim-jiang-github/desktop/releases?per_page=${perPage}`,
+        {
+          headers: {
+            Accept: 'application/vnd.github+json',
+            'user-agent': getUserAgent(),
+          },
+          signal: AbortSignal.timeout(15_000),
+        }
+      )
+      if (response.ok) {
+        return parseCustomReleaseMetadata(await response.json())
+      }
+    } catch (e) {
+      log.warn('[ReleaseNotes] unable to fetch custom releases', e)
+    }
+    return []
+  }
+
   const changelogURL = new URL(
     'https://central.github.com/deployments/desktop/desktop/changelog.json'
   )
@@ -119,12 +145,22 @@ export async function generateReleaseSummary(
   version?: string
 ): Promise<ReadonlyArray<ReleaseSummary>> {
   const lastTenReleases = await getChangeLog()
-  const currentVersion = new semver.SemVer(version ?? getVersion())
-  const recentReleases = lastTenReleases.filter(
-    r =>
-      semver.gt(new semver.SemVer(r.version), currentVersion) &&
-      new Date(r.pub_date).getTime() > offsetFromNow(-90, 'days')
-  )
+  if (lastTenReleases.length === 0) {
+    return []
+  }
+
+  const currentVersionStr = version ?? getVersion()
+  const currentComparable = comparableVersion(currentVersionStr)
+  const currentVersionValid = semver.valid(currentComparable)
+
+  const recentReleases =
+    currentVersionValid !== null
+      ? lastTenReleases.filter(
+          r =>
+            semver.gt(comparableVersion(r.version), currentComparable) &&
+            new Date(r.pub_date).getTime() > offsetFromNow(-90, 'days')
+        )
+      : []
 
   // We should only be pulling release notes when a release just happened, so
   // there should be one within the past 90 days. Thus, this is just precaution
@@ -143,6 +179,9 @@ export async function generateDevReleaseSummary(): Promise<
 > {
   // Remove version if want to use latest version in your dev build
   const releases = [...(await generateReleaseSummary('3.0.0'))]
+  if (releases.length === 0) {
+    return []
+  }
 
   const pretextDraft = await readFile(
     Path.join(__dirname, 'static', 'pretext-draft.md'),
