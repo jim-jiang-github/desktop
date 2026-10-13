@@ -72,7 +72,13 @@ jobs:
       - name: Stage release files and SHA256 checksums
         run: |
           New-Item -ItemType Directory -Path 'release-assets' | Out-Null
-          $names = @('GitHubDesktopCustomSetup-x64.exe', 'GitHubDesktopCustomSetup-x64.msi')
+          $version = (Get-Content -LiteralPath 'app\package.json' -Raw | ConvertFrom-Json).version
+          $packageName = "GitHubDesktopCustom-$version-full.nupkg"
+          $packagePath = Join-Path '.custom-build\dist' "GitHubDesktopCustom-$version-x64-full.nupkg"
+          if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf)) { throw "Missing Squirrel package: $packagePath" }
+          Copy-Item -LiteralPath '.custom-build\dist\RELEASES' -Destination 'release-assets\RELEASES'
+          Copy-Item -LiteralPath $packagePath -Destination (Join-Path 'release-assets' $packageName)
+          $names = @('GitHubDesktopCustomSetup-x64.exe', 'GitHubDesktopCustomSetup-x64.msi', $packageName)
           $checksums = foreach ($name in $names) {
             $source = Join-Path '.custom-build\dist' $name
             if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing installer: $source" }
@@ -127,7 +133,8 @@ jobs:
           Verify the SHA256 checksum before installing.
 
           Custom uses its own profile and does not replace official GitHub Desktop.
-          Existing Custom settings are retained. Updates are installed manually.
+          Existing Custom settings are retained. New releases can be installed
+          automatically by the Custom in-app updater.
           GitHub sign-in uses the public development OAuth client; this is not the
           official production OAuth application.
           EOF

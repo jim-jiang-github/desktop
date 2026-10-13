@@ -29,6 +29,7 @@ import {
 import { addTrustedIPCSender } from './trusted-ipc-sender'
 import { getUpdaterGUID } from '../lib/get-updater-guid'
 import { CLIAction } from '../lib/cli-action'
+import { getCustomUpdateFeedUrl } from '../lib/custom-update-feed'
 
 export class AppWindow {
   private window: Electron.BrowserWindow
@@ -443,9 +444,42 @@ export class AppWindow {
 
   public async checkForUpdates(url: string) {
     if (__RELEASE_CHANNEL__ === 'custom') {
-      return new Error(
-        'Automatic updates are disabled for GitHub Desktop Custom. Build and install a new local installer to update.'
-      )
+      try {
+        const response = await fetch(
+          'https://api.github.com/repos/jim-jiang-github/desktop/releases?per_page=100',
+          {
+            headers: {
+              Accept: 'application/vnd.github+json',
+              'User-Agent': `GitHubDesktopCustom/${app.getVersion()}`,
+            },
+            signal: AbortSignal.timeout(15_000),
+          }
+        )
+        if (!response.ok) {
+          throw new Error(
+            `GitHub releases request failed with status ${response.status}.`
+          )
+        }
+
+        const feedUrl = getCustomUpdateFeedUrl(
+          await response.json(),
+          app.getVersion()
+        )
+        if (feedUrl === null) {
+          this.isDownloadingUpdate = false
+          ipcWebContents.send(
+            this.window.webContents,
+            'auto-updater-update-not-available'
+          )
+          return undefined
+        }
+
+        autoUpdater.setFeedURL({ url: feedUrl })
+        autoUpdater.checkForUpdates()
+      } catch (e) {
+        return e
+      }
+      return undefined
     }
     try {
       autoUpdater.setFeedURL({ url: await trySetUpdaterGuid(url) })

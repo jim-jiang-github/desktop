@@ -408,14 +408,12 @@ export class App extends React.Component<IAppProps, IAppState> {
     // We only want to automatically check for updates on beta and prod
     if (
       __RELEASE_CHANNEL__ === 'production' ||
-      __RELEASE_CHANNEL__ === 'beta'
+      __RELEASE_CHANNEL__ === 'beta' ||
+      __RELEASE_CHANNEL__ === 'custom'
     ) {
       setInterval(() => this.checkForUpdates(true), UpdateCheckInterval)
       this.checkForUpdates(true)
-    } else if (
-      __RELEASE_CHANNEL__ !== 'custom' &&
-      (await updateStore.isUpdateShowcase())
-    ) {
+    } else if (await updateStore.isUpdateShowcase()) {
       // The only purpose of this call is so we can see the showcase on dev/test
       // env. Prod and beta environment will trigger this during automatic check
       // for updates.
