@@ -78,12 +78,16 @@ jobs:
           if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf)) { throw "Missing Squirrel package: $packagePath" }
           Copy-Item -LiteralPath '.custom-build\dist\RELEASES' -Destination 'release-assets\RELEASES'
           Copy-Item -LiteralPath $packagePath -Destination (Join-Path 'release-assets' $packageName)
-          $names = @('GitHubDesktopCustomSetup-x64.exe', 'GitHubDesktopCustomSetup-x64.msi', $packageName)
-          $checksums = foreach ($name in $names) {
+          $installerNames = @('GitHubDesktopCustomSetup-x64.exe', 'GitHubDesktopCustomSetup-x64.msi')
+          foreach ($name in $installerNames) {
             $source = Join-Path '.custom-build\dist' $name
             if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing installer: $source" }
-            if ((Get-Item -LiteralPath $source).Length -eq 0) { throw "Empty installer: $source" }
             Copy-Item -LiteralPath $source -Destination 'release-assets'
+          }
+          $checksums = foreach ($name in ($installerNames + @($packageName, 'RELEASES'))) {
+            $source = Join-Path 'release-assets' $name
+            if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing release asset: $source" }
+            if ((Get-Item -LiteralPath $source).Length -eq 0) { throw "Empty release asset: $source" }
             $hash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $name"
           }
@@ -145,9 +149,7 @@ jobs:
             release_flags+=(--prerelease)
           fi
           gh release create "$RELEASE_TAG" \
-            release-assets/GitHubDesktopCustomSetup-x64.exe \
-            release-assets/GitHubDesktopCustomSetup-x64.msi \
-            release-assets/SHA256SUMS.txt \
+            release-assets/* \
             --verify-tag "${release_flags[@]}" \
             --title "GitHub Desktop Custom $RELEASE_TAG" \
             --notes-file release-notes.txt

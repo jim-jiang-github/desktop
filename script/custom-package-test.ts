@@ -4,6 +4,7 @@ import { join, resolve } from 'path'
 import { copyFile, mkdir, readFile, writeFile } from 'fs/promises'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { createHash } from 'crypto'
 import { createTempDirectory } from '../app/test/helpers/temp'
 import { getBundleID, getProductName } from '../app/package-info'
 import {
@@ -105,6 +106,72 @@ describe('local Custom packaging', () => {
     assert.equal(isPublishable(), false)
     assert.equal(shouldMakeDelta(), false)
   })
+
+  it(
+    'stages and checksums every Custom release asset using the published filenames',
+    { skip: process.platform !== 'win32' },
+    async t => {
+      const workflow = await readFile(
+        join(root, '.github', 'workflows', 'custom-release.yml'),
+        'utf8'
+      )
+      const stagingScript = workflow
+        .split('      - name: Stage release files and SHA256 checksums')[1]
+        .split('      - uses: actions/upload-artifact')[0]
+        .split('        run: |')[1]
+        .split('\n')
+        .map(line => line.replace(/^ {10}/, ''))
+        .join('\n')
+      const fixture = await createTempDirectory(t)
+      await mkdir(join(fixture, 'app'))
+      const dist = join(fixture, '.custom-build', 'dist')
+      await mkdir(dist, { recursive: true })
+      await writeFile(
+        join(fixture, 'app', 'package.json'),
+        JSON.stringify({ version: '3.6.7-beta9' })
+      )
+      const packageName = 'GitHubDesktopCustom-3.6.7-beta9-full.nupkg'
+      await writeFile(
+        join(dist, 'GitHubDesktopCustom-3.6.7-beta9-x64-full.nupkg'),
+        'package'
+      )
+      await writeFile(join(dist, 'RELEASES'), `hash ${packageName} 7`)
+      for (const ext of ['exe', 'msi']) {
+        await writeFile(join(dist, `GitHubDesktopCustomSetup-x64.${ext}`), ext)
+      }
+      await writeFile(
+        join(fixture, 'stage.ps1'),
+        `$ErrorActionPreference = 'Stop'\n${stagingScript}`
+      )
+      await promisify(execFile)(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'stage.ps1'],
+        { cwd: fixture, windowsHide: true }
+      )
+      const assets = join(fixture, 'release-assets')
+      assert.equal(await readFile(join(assets, packageName), 'utf8'), 'package')
+      assert.equal(
+        await readFile(join(assets, 'RELEASES'), 'utf8'),
+        `hash ${packageName} 7`
+      )
+      const checksums = await readFile(join(assets, 'SHA256SUMS.txt'), 'utf8')
+      for (const name of [
+        'GitHubDesktopCustomSetup-x64.exe',
+        'GitHubDesktopCustomSetup-x64.msi',
+        packageName,
+        'RELEASES',
+      ]) {
+        const hash = createHash('sha256')
+          .update(await readFile(join(assets, name)))
+          .digest('hex')
+        assert.ok(
+          checksums.includes(`${hash}  ${name}`),
+          `Incorrect or missing checksum: ${name}`
+        )
+      }
+      assert.ok(workflow.includes('release-assets/* \\'))
+    }
+  )
 
   for (const buildExitCode of [0, 17]) {
     it(
