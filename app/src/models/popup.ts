@@ -29,6 +29,7 @@ import { TerminalOutput, TerminalOutputListener } from '../lib/git'
 import type { IBYOKModel, IBYOKProvider } from '../lib/copilot/byok'
 import { WorktreeEntry } from './worktree'
 import type { CustomCommandScope, ICustomCommand } from '../lib/custom-command'
+import { GitResetMode } from '../lib/git/reset'
 
 export enum PopupType {
   CustomCommand = 'CustomCommand',
@@ -68,7 +69,6 @@ export enum PopupType {
   PushNeedsPull = 'PushNeedsPull',
   ConfirmForcePush = 'ConfirmForcePush',
   StashAndSwitchBranch = 'StashAndSwitchBranch',
-  ConfirmOverwriteStash = 'ConfirmOverwriteStash',
   ConfirmDiscardStash = 'ConfirmDiscardStash',
   ConfirmRestoreRepositoryStash = 'ConfirmRestoreRepositoryStash',
   ConfirmCheckoutCommit = 'ConfirmCheckoutCommit',
@@ -139,9 +139,7 @@ interface IBasePopup {
 export type PopupDetail =
   | {
       type: PopupType.RunCustomCommand
-      repository: Repository
-      command: ICustomCommand
-      expectedDurationMs: number | null
+      repository?: Repository
     }
   | {
       type: PopupType.CustomCommand
@@ -298,11 +296,6 @@ export type PopupDetail =
       branchToCheckout: Branch
     }
   | {
-      type: PopupType.ConfirmOverwriteStash
-      repository: Repository
-      branchToCheckout: Branch | null
-    }
-  | {
       type: PopupType.ConfirmDiscardStash
       repository: Repository
       stash: IStashEntry
@@ -312,6 +305,7 @@ export type PopupDetail =
       type: PopupType.ConfirmRestoreRepositoryStash
       repository: Repository
       stash: IStashEntry
+      deleteAfterRestore?: boolean
     }
   | {
       type: PopupType.ConfirmCheckoutCommit
@@ -397,6 +391,7 @@ export type PopupDetail =
       type: PopupType.WarningBeforeReset
       repository: Repository
       commit: Commit
+      mode?: GitResetMode
     }
   | {
       type: PopupType.InvalidatedToken

@@ -1,14 +1,26 @@
 import * as React from 'react'
+import * as Path from 'path'
 
 import { PathLabel } from '../lib/path-label'
 import { Octicon, iconForStatus } from '../octicons'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
 import { mapStatus } from '../../lib/status'
-import { WorkingDirectoryFileChange } from '../../models/status'
+import {
+  AppFileStatusKind,
+  WorkingDirectoryFileChange,
+} from '../../models/status'
 import { TooltipDirection } from '../lib/tooltip'
 import { TooltippedContent } from '../lib/tooltipped-content'
 import { AriaLiveContainer } from '../accessibility/aria-live-container'
 import { IMatches } from '../../lib/fuzzy-find'
+import { Repository } from '../../models/repository'
+import { Dispatcher } from '../dispatcher'
+import {
+  LineEnding,
+  detectLineEnding,
+  getNextLineEnding,
+  toggleLineEnding,
+} from '../../lib/line-ending'
 
 interface IChangedFileProps {
   readonly file: WorkingDirectoryFileChange
@@ -23,10 +35,117 @@ interface IChangedFileProps {
     file: WorkingDirectoryFileChange,
     include: boolean
   ) => void
+  readonly repository?: Repository
+  readonly dispatcher?: Dispatcher
+}
+
+interface IChangedFileState {
+  readonly lineEnding: LineEnding | null
+  readonly isTogglingLineEnding: boolean
 }
 
 /** a changed file in the working directory for a given repository */
-export class ChangedFile extends React.Component<IChangedFileProps, {}> {
+export class ChangedFile extends React.Component<
+  IChangedFileProps,
+  IChangedFileState
+> {
+  private isComponentMounted = false
+
+  public constructor(props: IChangedFileProps) {
+    super(props)
+    this.state = {
+      lineEnding: null,
+      isTogglingLineEnding: false,
+    }
+  }
+
+  public componentDidMount() {
+    this.isComponentMounted = true
+    this.updateLineEnding()
+  }
+
+  public componentWillUnmount() {
+    this.isComponentMounted = false
+  }
+
+  public componentDidUpdate(prevProps: IChangedFileProps) {
+    if (
+      this.props.file.id !== prevProps.file.id ||
+      this.props.file.path !== prevProps.file.path ||
+      this.props.file.status !== prevProps.file.status ||
+      this.props.repository !== prevProps.repository
+    ) {
+      this.updateLineEnding()
+    }
+  }
+
+  private updateLineEnding = async () => {
+    const { file, repository } = this.props
+    if (
+      repository === undefined ||
+      file.status.kind === AppFileStatusKind.Deleted ||
+      file.status.submoduleStatus !== undefined
+    ) {
+      if (this.state.lineEnding !== null && this.isComponentMounted) {
+        this.setState({ lineEnding: null })
+      }
+      return
+    }
+
+    const fullPath = Path.join(repository.path, file.path)
+    const lineEnding = await detectLineEnding(fullPath)
+    if (
+      this.isComponentMounted &&
+      this.props.file.id === file.id &&
+      this.props.repository?.path === repository.path
+    ) {
+      this.setState({ lineEnding })
+    }
+  }
+
+  private onLineEndingClick = async (
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const { lineEnding, isTogglingLineEnding } = this.state
+    const { repository, file, dispatcher } = this.props
+
+    if (
+      lineEnding === null ||
+      isTogglingLineEnding ||
+      repository === undefined
+    ) {
+      return
+    }
+
+    const nextEnding = getNextLineEnding(lineEnding)
+    const fullPath = Path.join(repository.path, file.path)
+
+    this.setState({ isTogglingLineEnding: true })
+
+    try {
+      await toggleLineEnding(fullPath, nextEnding)
+      if (this.isComponentMounted && this.props.file.id === file.id) {
+        this.setState({ lineEnding: nextEnding, isTogglingLineEnding: false })
+      }
+      if (dispatcher !== undefined) {
+        dispatcher.refreshRepository(repository)
+      }
+    } catch (e) {
+      log.error(`Failed to toggle line ending for ${fullPath}`, e)
+      if (this.isComponentMounted && this.props.file.id === file.id) {
+        this.setState({ isTogglingLineEnding: false })
+        this.updateLineEnding()
+      }
+    }
+  }
+
+  private stopEventPropagation = (event: React.MouseEvent<any>) => {
+    event.stopPropagation()
+  }
+
   private handleCheckboxChange = (event: React.FormEvent<HTMLInputElement>) => {
     const include = event.currentTarget.checked
     this.props.onIncludeChanged(this.props.file, include)
@@ -58,13 +177,15 @@ export class ChangedFile extends React.Component<IChangedFileProps, {}> {
     const checkboxWidth = 20
     const statusWidth = 16
     const filePadding = 5
+    const lineEndingButtonWidth = this.state.lineEnding !== null ? 36 : 0
 
     const availablePathWidth =
       availableWidth -
       listItemPadding -
       checkboxWidth -
       filePadding -
-      statusWidth
+      statusWidth -
+      lineEndingButtonWidth
 
     const includedText =
       this.props.include === true
@@ -102,6 +223,31 @@ export class ChangedFile extends React.Component<IChangedFileProps, {}> {
           ariaHidden={true}
           matches={matches}
         />
+
+        {this.state.lineEnding !== null && (
+          <TooltippedContent
+            tooltip={`Line ending: ${
+              this.state.lineEnding
+            }. Click to switch to ${getNextLineEnding(this.state.lineEnding)}`}
+            direction={TooltipDirection.NORTH}
+          >
+            <button
+              type="button"
+              className="line-ending-button"
+              onClick={this.onLineEndingClick}
+              onMouseDown={this.stopEventPropagation}
+              onMouseUp={this.stopEventPropagation}
+              onDoubleClick={this.stopEventPropagation}
+              disabled={this.state.isTogglingLineEnding}
+              tabIndex={-1}
+              aria-label={`Toggle line ending from ${
+                this.state.lineEnding
+              } to ${getNextLineEnding(this.state.lineEnding)}`}
+            >
+              {this.state.lineEnding}
+            </button>
+          </TooltippedContent>
+        )}
 
         <AriaLiveContainer message={pathScreenReaderMessage} />
         <TooltippedContent

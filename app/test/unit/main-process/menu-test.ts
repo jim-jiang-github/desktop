@@ -198,7 +198,6 @@ describe('main-process menu', () => {
       'isChangesFilterVisible',
       'hasCurrentPullRequest',
       'askForConfirmationOnRepositoryRemoval',
-      'askForConfirmationWhenStashingAllChanges',
       'isForcePushForCurrentRepository',
       'askForConfirmationOnForcePush',
     ] as const

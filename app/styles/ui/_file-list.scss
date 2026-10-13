@@ -19,6 +19,33 @@
     &:not(.focus-within) .list-item {
       @include octicon-status;
     }
+
+    &.focus-within .list-item.selected:not(.in-keyboard-insertion-mode) {
+      .line-ending-button {
+        background: rgba(255, 255, 255, 0.18);
+        border-color: rgba(255, 255, 255, 0.7);
+        color: #ffffff;
+
+        &:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.3);
+          border-color: #ffffff;
+          color: #ffffff;
+        }
+      }
+    }
+
+    &:not(.focus-within) .list-item.selected {
+      .line-ending-button {
+        background: var(--box-alt-background-color);
+        border-color: var(--box-border-contrast-color);
+        color: var(--text-color);
+
+        &:hover:not(:disabled) {
+          border-color: var(--text-color);
+          color: var(--text-color);
+        }
+      }
+    }
   }
 
   .file {
@@ -39,6 +66,35 @@
     input,
     .status {
       flex-shrink: 0;
+    }
+
+    .line-ending-button {
+      flex-shrink: 0;
+      min-width: 28px;
+      height: 18px;
+      padding: 0 4px;
+      margin-right: var(--spacing-half);
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 16px;
+      text-align: center;
+      border: 1px solid var(--box-border-color);
+      border-radius: 3px;
+      background: var(--box-alt-background-color);
+      color: var(--text-secondary-color);
+      cursor: pointer;
+      user-select: none;
+
+      &:hover:not(:disabled) {
+        color: var(--text-color);
+        border-color: var(--text-secondary-color);
+        background: var(--box-hover-background-color);
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
     }
 
     .octicon {

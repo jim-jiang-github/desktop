@@ -59,7 +59,6 @@ export type MenuLabelsEvent = {
    * in a confirmation dialog asking the user whether they want to override
    * their existing stash or not.
    */
-  readonly askForConfirmationWhenStashingAllChanges?: boolean
 
   /**
    * Whether or not the changes filter is visible in the current view.

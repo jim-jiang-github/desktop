@@ -1,5 +1,7 @@
-import { execFile, spawn } from 'child_process'
+import { execFile, spawn, SpawnOptions } from 'child_process'
 import { createHash, randomUUID } from 'crypto'
+import * as fs from 'fs'
+import * as os from 'os'
 import * as Path from 'path'
 
 /** Whether a command list belongs to a checkout or is shared by all repositories. */
@@ -260,6 +262,19 @@ export function importCustomCommandsFromJSON(
   return [...existing, ...imported]
 }
 
+function buildPowerShellScript(command: string): string {
+  return [
+    '$ErrorActionPreference = "Stop"',
+    '$ProgressPreference = "SilentlyContinue"',
+    '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)',
+    '$OutputEncoding = [Console]::OutputEncoding',
+    '$global:LASTEXITCODE = 0',
+    command,
+    'if (-not $? -and $LASTEXITCODE -eq 0) { exit 1 }',
+    'exit $LASTEXITCODE',
+  ].join('\n')
+}
+
 /** Encode user-authored PowerShell without interpolating paths or shell arguments. */
 export function getCustomCommandArguments(
   command: string
@@ -275,19 +290,7 @@ export function getCustomCommandArguments(
     '-OutputFormat',
     'Text',
     '-EncodedCommand',
-    Buffer.from(
-      [
-        '$ErrorActionPreference = "Stop"',
-        '$ProgressPreference = "SilentlyContinue"',
-        '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)',
-        '$OutputEncoding = [Console]::OutputEncoding',
-        '$global:LASTEXITCODE = 0',
-        command,
-        'if (-not $? -and $LASTEXITCODE -eq 0) { exit 1 }',
-        'exit $LASTEXITCODE',
-      ].join('\n'),
-      'utf16le'
-    ).toString('base64'),
+    Buffer.from(buildPowerShellScript(command), 'utf16le').toString('base64'),
   ]
 }
 
@@ -302,7 +305,47 @@ export function startCustomCommand(
     throw new Error('Custom commands are currently supported on Windows only.')
   }
 
-  const args = getCustomCommandArguments(command)
+  const rawArgs = getCustomCommandArguments(command)
+  let args = rawArgs
+  let tempScriptPath: string | null = null
+
+  // Windows limits command lines to 8191 (cmd.exe) or 32767 chars (CreateProcessW).
+  // A multi-line script encoded with UTF-16LE + Base64 quickly exceeds this limit,
+  // causing `spawn ENAMETOOLONG`. When the encoded argument exceeds 2048 chars,
+  // write the script to a temporary .ps1 file and execute with -File.
+  const encodedArg = rawArgs[rawArgs.length - 1]
+  if (encodedArg.length > 2048) {
+    tempScriptPath = Path.join(
+      os.tmpdir(),
+      `github-desktop-custom-command-${randomUUID()}.ps1`
+    )
+    // eslint-disable-next-line no-sync
+    fs.writeFileSync(
+      tempScriptPath,
+      '\uFEFF' + buildPowerShellScript(command),
+      { encoding: 'utf8' }
+    )
+    args = [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      tempScriptPath,
+    ]
+  }
+
+  const cleanupTempScript = () => {
+    if (tempScriptPath !== null) {
+      try {
+        // eslint-disable-next-line no-sync
+        fs.unlinkSync(tempScriptPath)
+      } catch {}
+      tempScriptPath = null
+    }
+  }
+
   const systemDirectory = Path.join(
     process.env.SystemRoot || 'C:\\Windows',
     'System32'
@@ -314,7 +357,7 @@ export function startCustomCommand(
     'powershell.exe'
   )
 
-  const child = spawn(executable, args, {
+  const spawnOptions: SpawnOptions = {
     cwd: repositoryPath,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -327,16 +370,52 @@ export function startCustomCommand(
             GITHUB_DESKTOP_PUSH_REQUEST: pushRequestPath,
           },
         }),
-  })
-  child.stdout.on('data', onOutput)
-  child.stderr.on('data', onOutput)
+  }
+
+  let child: ReturnType<typeof spawn>
+  try {
+    child = spawn(executable, args, spawnOptions)
+  } catch (error: any) {
+    if (error?.code === 'ENAMETOOLONG' && tempScriptPath === null) {
+      tempScriptPath = Path.join(
+        os.tmpdir(),
+        `github-desktop-custom-command-${randomUUID()}.ps1`
+      )
+      // eslint-disable-next-line no-sync
+      fs.writeFileSync(
+        tempScriptPath,
+        '\uFEFF' + buildPowerShellScript(command),
+        { encoding: 'utf8' }
+      )
+      args = [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        tempScriptPath,
+      ]
+      child = spawn(executable, args, spawnOptions)
+    } else {
+      cleanupTempScript()
+      throw error
+    }
+  }
+
+  child.stdout?.on('data', onOutput)
+  child.stderr?.on('data', onOutput)
 
   let closed = false
   let cancelled = false
   let stopRequest: Promise<void> | null = null
   const result = new Promise<CustomCommandResult>((resolve, reject) => {
-    child.once('error', reject)
+    child.once('error', error => {
+      cleanupTempScript()
+      reject(error)
+    })
     child.once('close', (code, signal) => {
+      cleanupTempScript()
       closed = true
       const finish = () => {
         if (cancelled) {

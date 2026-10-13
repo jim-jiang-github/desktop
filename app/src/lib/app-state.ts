@@ -91,10 +91,15 @@ export type PossibleSelections =
 
 /** All of the shared app state. */
 export interface IAppState {
-  /** The most recent command, including its result when it ran in the background. */
+  /** The command task for the currently selected repository, or null. */
   readonly customCommandTask?:
     | import('./stores/custom-command-store').ICustomCommandTask
     | null
+  /** All running or retained command tasks across all repositories. */
+  readonly customCommandTasks?: ReadonlyMap<
+    string,
+    import('./stores/custom-command-store').ICustomCommandTask
+  >
   readonly accounts: ReadonlyArray<Account>
   /**
    * The current list of repositories tracked in the application

@@ -321,6 +321,7 @@
   - [ ] Panes can be resized horizontally, and contents resize to take the full width
     - [ ] Quitting Desktop and relaunching remembers pane sizes
   - [ ] Uncommitted files are optionally stashed if user attempts to switch branches; depends on Preferences.
+    - [ ] Creating another stash on the same branch, manually or when switching branches, retains existing entries without an overwrite prompt; all entries are available in the Stashes list.
     - [ ] Modal asks user to stash on current branch or bring changes to new branch; `Cancel` or `Switch Branch` buttons
       - [ ] If stashed then changes shown under Stashed Changes section below Changes tab when returning to the original branch
         - [ ] Stashed changes section show all stashed files and diffs; user can discard or restore to Changes

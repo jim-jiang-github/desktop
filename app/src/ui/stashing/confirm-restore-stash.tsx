@@ -8,20 +8,29 @@ import { OkCancelButtonGroup } from '../dialog/ok-cancel-button-group'
 interface IConfirmRestoreStashProps {
   readonly repository: Repository
   readonly stash: IStashEntry
-  readonly dispatcher: Pick<Dispatcher, 'applyRepositoryStash'>
+  readonly dispatcher: Pick<
+    Dispatcher,
+    'applyRepositoryStash' | 'popRepositoryStash'
+  >
+  readonly deleteAfterRestore?: boolean
   readonly onDismissed: () => void
 }
 
 /** Confirm the checkout that will receive a selected stash, without dropping it. */
 export function ConfirmRestoreStashDialog(props: IConfirmRestoreStashProps) {
-  const { repository, stash, dispatcher, onDismissed } = props
+  const { repository, stash, dispatcher, deleteAfterRestore, onDismissed } =
+    props
   const [restoring, setRestoring] = React.useState(false)
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null)
   const restore = React.useCallback(async () => {
     setRestoring(true)
     setErrorMessage(null)
     try {
-      await dispatcher.applyRepositoryStash(repository, stash.stashSha)
+      if (deleteAfterRestore === true) {
+        await dispatcher.popRepositoryStash(repository, stash.stashSha)
+      } else {
+        await dispatcher.applyRepositoryStash(repository, stash.stashSha)
+      }
     } catch (error) {
       setRestoring(false)
       setErrorMessage(error instanceof Error ? error.message : String(error))
@@ -29,12 +38,19 @@ export function ConfirmRestoreStashDialog(props: IConfirmRestoreStashProps) {
       return
     }
     onDismissed()
-  }, [repository, stash, dispatcher, onDismissed])
+  }, [repository, stash, dispatcher, deleteAfterRestore, onDismissed])
+
+  const title =
+    deleteAfterRestore === true
+      ? 'Restore and delete selected stash?'
+      : 'Restore selected stash?'
+  const okButtonText =
+    deleteAfterRestore === true ? 'Restore and delete' : 'Restore'
 
   return (
     <Dialog
       id="restore-repository-stash"
-      title="Restore selected stash?"
+      title={title}
       onSubmit={restore}
       onDismissed={onDismissed}
       loading={restoring}
@@ -44,10 +60,17 @@ export function ConfirmRestoreStashDialog(props: IConfirmRestoreStashProps) {
       <DialogContent>
         <p>Apply this stash to the following worktree:</p>
         <p className="stash-restore-path">{repository.path}</p>
-        <p>
-          The stash will be kept, including when conflicts occur. You can delete
-          it separately when no longer needed.
-        </p>
+        {deleteAfterRestore === true ? (
+          <p>
+            The stash will be deleted if it applies cleanly. If conflicts occur,
+            the stash will be kept so you can resolve them safely.
+          </p>
+        ) : (
+          <p>
+            The stash will be kept, including when conflicts occur. You can
+            delete it separately when no longer needed.
+          </p>
+        )}
         {errorMessage !== null && (
           <p role="status">
             Restore did not complete. The stash was kept. Cancel and open
@@ -56,7 +79,7 @@ export function ConfirmRestoreStashDialog(props: IConfirmRestoreStashProps) {
         )}
       </DialogContent>
       <DialogFooter>
-        <OkCancelButtonGroup okButtonText="Restore" />
+        <OkCancelButtonGroup okButtonText={okButtonText} />
       </DialogFooter>
     </Dialog>
   )

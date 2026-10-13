@@ -145,4 +145,88 @@ describe('application-owned custom command', () => {
     await Promise.resolve()
     assert.equal(run.store.snapshot?.progress, 100)
   })
+
+  it('runs commands concurrently in different repositories with isolated state and output', async t => {
+    const store = new CustomCommandStore(() => {})
+    const repoA = new Repository('C:\\repo\\project-a', 1, null, false)
+    const repoB = new Repository('C:\\repo\\project-b', 2, null, false)
+    const commandA = { id: 'cmd-a', name: 'Build A', command: 'echo a' }
+    const commandB = { id: 'cmd-b', name: 'Build B', command: 'echo b' }
+
+    let finishA!: (result: CustomCommandResult) => void
+    let outputA!: (chunk: Buffer) => void
+    const resultA = new Promise<CustomCommandResult>(resolve => {
+      finishA = resolve
+    })
+    const stopA = t.mock.fn(async () => {
+      finishA({ kind: 'cancelled' })
+    })
+
+    let finishB!: (result: CustomCommandResult) => void
+    let outputB!: (chunk: Buffer) => void
+    const resultB = new Promise<CustomCommandResult>(resolve => {
+      finishB = resolve
+    })
+    const stopB = t.mock.fn(async () => {
+      finishB({ kind: 'cancelled' })
+    })
+
+    store.start(repoA, commandA, 1000, onOutput => {
+      outputA = onOutput
+      return { result: resultA, stop: stopA }
+    })
+
+    // Starting in repo B while repo A is running should succeed!
+    store.start(repoB, commandB, 2000, onOutput => {
+      outputB = onOutput
+      return { result: resultB, stop: stopB }
+    })
+
+    assert.equal(store.isAnyCommandActive(), true)
+    assert.equal(store.getTask(repoA)?.status, 'running')
+    assert.equal(store.getTask(repoB)?.status, 'running')
+    assert.equal(store.getAllTasks().size, 2)
+
+    // Repo A cannot start a duplicate concurrent command
+    assert.throws(
+      () =>
+        store.start(repoA, commandA, 1000, () => ({
+          result: Promise.resolve({ kind: 'exited', exitCode: 0 }),
+          stop: async () => {},
+        })),
+      /already running/
+    )
+
+    // Output streams are isolated per repository
+    const receivedA: string[] = []
+    const receivedB: string[] = []
+    store.subscribeOutput(repoA, chunk => receivedA.push(chunk))
+    store.subscribeOutput(repoB, chunk => receivedB.push(chunk))
+
+    outputA(Buffer.from('hello from A'))
+    outputB(Buffer.from('hello from B'))
+
+    assert.deepEqual(receivedA, ['hello from A'])
+    assert.deepEqual(receivedB, ['hello from B'])
+
+    // Stopping repo A does not affect repo B
+    await store.stop(repoA)
+    assert.equal(stopA.mock.callCount(), 1)
+    assert.equal(stopB.mock.callCount(), 0)
+    assert.equal(store.getTask(repoA)?.status, 'cancelled')
+    assert.equal(store.getTask(repoB)?.status, 'running')
+    assert.equal(store.isAnyCommandActive(), true)
+
+    // Dismissing repo A result leaves repo B intact
+    store.dismissResult(repoA)
+    assert.equal(store.getTask(repoA), null)
+    assert.equal(store.getTask(repoB)?.status, 'running')
+    assert.equal(store.getAllTasks().size, 1)
+
+    // Finish repo B
+    finishB({ kind: 'exited', exitCode: 0 })
+    await resultB
+    assert.equal(store.getTask(repoB)?.status, 'succeeded')
+    assert.equal(store.isAnyCommandActive(), false)
+  })
 })

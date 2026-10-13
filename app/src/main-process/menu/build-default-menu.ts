@@ -22,9 +22,6 @@ const showPullRequestLabel = __DARWIN__
 const defaultBranchNameValue = __DARWIN__ ? 'Default Branch' : 'default branch'
 const confirmRepositoryRemovalLabel = __DARWIN__ ? 'Remove…' : '&Remove…'
 const repositoryRemovalLabel = __DARWIN__ ? 'Remove' : '&Remove'
-const confirmStashAllChangesLabel = __DARWIN__
-  ? 'Stash All Changes…'
-  : '&Stash all changes…'
 const stashAllChangesLabel = __DARWIN__
   ? 'Stash All Changes'
   : '&Stash all changes'
@@ -52,7 +49,6 @@ export function buildDefaultMenuTemplate({
   contributionTargetDefaultBranch = defaultBranchNameValue,
   isForcePushForCurrentRepository = false,
   isStashedChangesVisible = false,
-  askForConfirmationWhenStashingAllChanges = true,
   isChangesFilterVisible = true,
 }: MenuLabelsEvent): Electron.MenuItemConstructorOptions[] {
   contributionTargetDefaultBranch = truncateWithEllipsis(
@@ -446,9 +442,7 @@ export function buildDefaultMenuTemplate({
       click: emit('discard-all-changes'),
     },
     {
-      label: askForConfirmationWhenStashingAllChanges
-        ? confirmStashAllChangesLabel
-        : stashAllChangesLabel,
+      label: stashAllChangesLabel,
       id: 'stash-all-changes',
       accelerator: 'CmdOrCtrl+Shift+S',
       click: emit('stash-all-changes'),

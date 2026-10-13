@@ -574,4 +574,22 @@ describe('custom commands', () => {
       assert.throws(() => process.kill(childPid, 0), { code: 'ESRCH' })
     }
   )
+
+  it(
+    'executes long scripts via a temporary file without hitting command-line length limits (ENAMETOOLONG)',
+    { skip: !__WIN32__, timeout: 30000 },
+    async t => {
+      const parent = await createTempDirectory(t)
+      const longComment = '# ' + 'x'.repeat(4000)
+      const command = `${longComment}\nWrite-Output "long command executed successfully"`
+      const chunks: Buffer[] = []
+      const run = startCustomCommand(parent, command, chunk =>
+        chunks.push(chunk)
+      )
+      t.after(() => run.stop())
+      assert.deepEqual(await run.result, { kind: 'exited', exitCode: 0 })
+      const output = Buffer.concat(chunks).toString('utf8')
+      assert.ok(output.includes('long command executed successfully'))
+    }
+  )
 })

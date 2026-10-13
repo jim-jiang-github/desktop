@@ -109,10 +109,10 @@ export class RepositoryListItem extends React.Component<
           {alias && <> ({alias})</>}
         </div>
         <div>{repo.path}</div>
-        {this.props.customCommandTask?.repository.id === repo.id && (
+        {commandBelongsToRepository(this.props.customCommandTask, repo) && (
           <div>
-            Command: {this.props.customCommandTask.message} —{' '}
-            {this.props.customCommandTask.repository.path}
+            Command: {this.props.customCommandTask?.message} —{' '}
+            {this.props.customCommandTask?.repository.path}
           </div>
         )}
       </>

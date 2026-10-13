@@ -165,6 +165,17 @@ export function RepositoryStashBrowser(props: IRepositoryStashBrowserProps) {
     }
   }, [selected, repository, dispatcher])
 
+  const requestRestoreAndDelete = React.useCallback(() => {
+    if (selected !== undefined) {
+      dispatcher.showPopup({
+        type: PopupType.ConfirmRestoreRepositoryStash,
+        repository,
+        stash: selected,
+        deleteAfterRestore: true,
+      })
+    }
+  }, [selected, repository, dispatcher])
+
   const requestDelete = React.useCallback(() => {
     if (selected !== undefined) {
       dispatcher.showPopup({
@@ -177,8 +188,11 @@ export function RepositoryStashBrowser(props: IRepositoryStashBrowserProps) {
   }, [selected, repository, dispatcher])
 
   const showMore = React.useCallback(() => {
-    showContextualMenu([{ label: 'Delete stash…', action: requestDelete }])
-  }, [requestDelete])
+    showContextualMenu([
+      { label: 'Restore and delete…', action: requestRestoreAndDelete },
+      { label: 'Delete stash…', action: requestDelete },
+    ])
+  }, [requestRestoreAndDelete, requestDelete])
 
   const renderEntry = React.useCallback(
     (row: number) => {
@@ -350,6 +364,9 @@ export function RepositoryStashBrowser(props: IRepositoryStashBrowserProps) {
               <div className="stash-actions">
                 <Button onClick={requestRestore} disabled={loading}>
                   Restore…
+                </Button>
+                <Button onClick={requestRestoreAndDelete} disabled={loading}>
+                  Restore and delete…
                 </Button>
                 <Button
                   onClick={showMore}

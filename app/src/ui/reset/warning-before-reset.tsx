@@ -5,11 +5,13 @@ import { Dispatcher } from '../dispatcher'
 import { Row } from '../lib/row'
 import { OkCancelButtonGroup } from '../dialog/ok-cancel-button-group'
 import { Commit } from '../../models/commit'
+import { GitResetMode } from '../../lib/git/reset'
 
 interface IWarningBeforeResetProps {
   readonly dispatcher: Dispatcher
   readonly repository: Repository
   readonly commit: Commit
+  readonly mode?: GitResetMode
   readonly onDismissed: () => void
 }
 
@@ -31,7 +33,20 @@ export class WarningBeforeReset extends React.Component<
   }
 
   public render() {
-    const title = __DARWIN__ ? 'Soft Reset to Commit' : 'Soft reset to commit'
+    const isHard = this.props.mode === GitResetMode.Hard
+    const title = isHard
+      ? __DARWIN__
+        ? 'Hard Reset to Commit'
+        : 'Hard reset to commit'
+      : __DARWIN__
+      ? 'Soft Reset to Commit'
+      : 'Soft reset to commit'
+
+    const message = isHard
+      ? 'This moves the current branch to the selected commit and discards all commits and working directory changes made after it. If those commits have already been pushed, you may need to force push. Are you sure you want to hard reset to this commit?'
+      : 'This moves the current branch to the selected commit. Changes from the commits being removed will remain staged and your working directory will be preserved. If those commits have already been pushed, you may need to force push. Do you want to continue?'
+
+    const okButtonText = isHard ? 'Hard Reset' : 'Continue'
 
     return (
       <Dialog
@@ -46,26 +61,21 @@ export class WarningBeforeReset extends React.Component<
         ariaDescribedBy="reset-warning-message"
       >
         <DialogContent>
-          <Row id="reset-warning-message">
-            This moves the current branch to the selected commit. Changes from
-            the commits being removed will remain staged and your working
-            directory will be preserved. If those commits have already been
-            pushed, you may need to force push. Do you want to continue?
-          </Row>
+          <Row id="reset-warning-message">{message}</Row>
         </DialogContent>
         <DialogFooter>
-          <OkCancelButtonGroup destructive={true} okButtonText="Continue" />
+          <OkCancelButtonGroup destructive={true} okButtonText={okButtonText} />
         </DialogFooter>
       </Dialog>
     )
   }
 
   private onSubmit = async () => {
-    const { dispatcher, repository, commit, onDismissed } = this.props
+    const { dispatcher, repository, commit, mode, onDismissed } = this.props
     this.setState({ isLoading: true })
 
     try {
-      await dispatcher.resetToCommit(repository, commit, false)
+      await dispatcher.resetToCommit(repository, commit, false, mode)
     } finally {
       this.setState({ isLoading: false })
     }

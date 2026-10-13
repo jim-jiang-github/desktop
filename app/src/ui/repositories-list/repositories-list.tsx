@@ -27,6 +27,10 @@ import { enableWorktreeSupport } from '../../lib/feature-flag'
 import { SectionFilterList } from '../lib/section-filter-list'
 import { assertNever } from '../../lib/fatal-error'
 import { IAheadBehind } from '../../models/branch'
+import {
+  commandBelongsToRepository,
+  getRepositoryKey,
+} from '../../lib/stores/custom-command-store'
 
 const BlankSlateImage = encodePathAsUrl(__dirname, 'static/empty-no-repo.svg')
 
@@ -34,6 +38,10 @@ interface IRepositoriesListProps {
   readonly customCommandTask?:
     | import('../../lib/stores/custom-command-store').ICustomCommandTask
     | null
+  readonly customCommandTasks?: ReadonlyMap<
+    string,
+    import('../../lib/stores/custom-command-store').ICustomCommandTask
+  >
   readonly selectedRepository: Repositoryish | null
   readonly repositories: ReadonlyArray<Repositoryish>
   readonly recentRepositories: ReadonlyArray<number>
@@ -158,9 +166,14 @@ export class RepositoriesList extends React.Component<
 
   private renderItem = (item: IRepositoryListItem, matches: IMatches) => {
     const repository = item.repository
+    const task =
+      this.props.customCommandTasks?.get(getRepositoryKey(repository)) ??
+      (commandBelongsToRepository(this.props.customCommandTask, repository)
+        ? this.props.customCommandTask
+        : null)
     return (
       <RepositoryListItem
-        customCommandTask={this.props.customCommandTask}
+        customCommandTask={task}
         key={repository.id}
         repository={repository}
         needsDisambiguation={item.needsDisambiguation}
@@ -357,6 +370,7 @@ export class RepositoriesList extends React.Component<
           groups={groups}
           invalidationProps={{
             customCommandTask: this.props.customCommandTask,
+            customCommandTasks: this.props.customCommandTasks,
             repositories: this.props.repositories,
             filterText: this.props.filterText,
           }}

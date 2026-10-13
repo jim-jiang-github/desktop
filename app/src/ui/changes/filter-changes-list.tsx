@@ -470,6 +470,8 @@ export class FilterChangesList extends React.Component<
         checkboxTooltip={checkboxTooltip}
         focused={this.state.focusedRow === changeListItem.id}
         matches={matches}
+        repository={this.props.repository}
+        dispatcher={this.props.dispatcher}
       />
     )
   }

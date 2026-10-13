@@ -63,4 +63,30 @@
     margin-top: var(--spacing);
     color: var(--text-secondary-color);
   }
+
+  .dialog-footer {
+    .button-group {
+      display: flex;
+      flex-direction: row;
+      justify-content: flex-end;
+      align-items: center;
+      gap: var(--spacing-half);
+    }
+
+    button.command-action-icon-button {
+      min-width: 32px;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 0;
+
+      .octicon {
+        width: 16px;
+        height: 16px;
+      }
+    }
+  }
 }

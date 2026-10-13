@@ -1,4 +1,5 @@
 import { Disposable } from 'event-kit'
+import { GitResetMode } from '../../lib/git/reset'
 import type {
   CustomCommandScope,
   ICustomCommand,
@@ -1672,7 +1673,17 @@ export class Dispatcher {
     return this.appStore._runCustomCommand(repository, id, scope)
   }
 
-  /** Start the explicitly selected command and stream its output to its dialog. */
+  /** Restore the existing task without executing it again. */
+  public showCustomCommandTask(repository?: Repository): Promise<void> {
+    return this.appStore._showCustomCommandTask(repository)
+  }
+
+  /** Clear a finished command's result and output without affecting running tasks. */
+  public dismissCustomCommandResult(repository?: Repository): void {
+    this.appStore._dismissCustomCommandResult(repository)
+  }
+
+  /** Start the explicitly selected command and stream its output to its owner. */
   public executeCustomCommand(
     repository: Repository,
     command: ICustomCommand,
@@ -2910,21 +2921,10 @@ export class Dispatcher {
   }
 
   /**
-   * Creates a stash for the current branch. Note that this will
-   * override any stash that already exists for the current branch.
-   *
-   * @param repository
-   * @param showConfirmationDialog  Whether to show a confirmation dialog if an
-   *                                existing stash exists (defaults to true).
+   * Creates a stash for the current branch, preserving existing stash entries.
    */
-  public createStashForCurrentBranch(
-    repository: Repository,
-    showConfirmationDialog: boolean = true
-  ) {
-    return this.appStore._createStashForCurrentBranch(
-      repository,
-      showConfirmationDialog
-    )
+  public createStashForCurrentBranch(repository: Repository) {
+    return this.appStore._createStashForCurrentBranch(repository)
   }
 
   /** Drops the given stash in the given repository */
@@ -2940,6 +2940,11 @@ export class Dispatcher {
   /** Apply a repository stash without dropping it. */
   public applyRepositoryStash(repository: Repository, stashSha: string) {
     return this.appStore._applyRepositoryStash(repository, stashSha)
+  }
+
+  /** Apply a repository stash and drop it if applying succeeds. */
+  public popRepositoryStash(repository: Repository, stashSha: string) {
+    return this.appStore._popRepositoryStash(repository, stashSha)
   }
 
   /** Delete a repository stash by its immutable commit ID. */

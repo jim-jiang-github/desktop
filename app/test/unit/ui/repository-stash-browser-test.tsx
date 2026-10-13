@@ -192,6 +192,9 @@ describe('repository stash browser', () => {
       applyRepositoryStash: mock.fn(
         async (_repository: Repository, _sha: string) => {}
       ),
+      popRepositoryStash: mock.fn(
+        async (_repository: Repository, _sha: string) => {}
+      ),
       deleteRepositoryStash: mock.fn(
         async (_repository: Repository, _sha: string) => {}
       ),
@@ -287,13 +290,52 @@ describe('repository stash browser', () => {
     confirmation.unmount()
   })
 
+  it('restores and deletes the selection when requested', async () => {
+    const { dispatcher, repository, entries, view } = await setup()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore and delete…' }))
+    assert.equal(dispatcher.popRepositoryStash.mock.callCount(), 0)
+    assert.deepEqual(dispatcher.showPopup.mock.calls[0].arguments, [
+      {
+        type: PopupType.ConfirmRestoreRepositoryStash,
+        repository,
+        stash: entries[0],
+        deleteAfterRestore: true,
+      },
+    ])
+    view.unmount()
+    const dismissed = mock.fn()
+    const confirmation = render(
+      <DialogStackContext.Provider value={{ isTopMost: true }}>
+        <ConfirmRestoreStashDialog
+          repository={repository}
+          stash={entries[0]}
+          deleteAfterRestore={true}
+          dispatcher={dispatcher}
+          onDismissed={dismissed}
+        />
+      </DialogStackContext.Provider>
+    )
+    assert.ok(screen.getByText(repository.path))
+    assert.ok(screen.getByText(/The stash will be deleted/))
+    fireEvent.click(screen.getByRole('button', { name: 'Restore and delete' }))
+    await waitFor(() => assert.equal(dismissed.mock.callCount(), 1))
+    assert.deepEqual(dispatcher.popRepositoryStash.mock.calls[0].arguments, [
+      repository,
+      'first',
+    ])
+    assert.equal(dispatcher.applyRepositoryStash.mock.callCount(), 0)
+    assert.equal(dispatcher.deleteRepositoryStash.mock.callCount(), 0)
+    confirmation.unmount()
+  })
+
   it('requires confirmation before deleting and leaves cancellation untouched', async () => {
     const { dispatcher, repository, entries, view } = await setup()
     fireEvent.click(screen.getByRole('button', { name: 'More stash actions' }))
     const items =
       showMenu.mock.calls[showMenu.mock.calls.length - 1].arguments[0]
-    assert.equal(items[0].label, 'Delete stash…')
-    items[0].action?.()
+    const deleteItem = items.find(i => i.label === 'Delete stash…')
+    assert.ok(deleteItem !== undefined)
+    deleteItem.action?.()
     assert.deepEqual(dispatcher.showPopup.mock.calls[0].arguments, [
       {
         type: PopupType.ConfirmDiscardStash,

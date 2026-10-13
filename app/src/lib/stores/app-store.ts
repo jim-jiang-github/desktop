@@ -1,6 +1,10 @@
 import * as Path from 'path'
 import { readFile, writeFile } from 'fs/promises'
 import {
+  CustomCommandStore,
+  isCustomCommandActive,
+} from './custom-command-store'
+import {
   CustomCommandScope,
   ICustomCommand,
   getCustomCommands,
@@ -611,6 +615,10 @@ const selectedCopilotModelsByAccountKey = 'selected-copilot-models-by-account'
 export const showChangesFilterDefault = true
 
 export class AppStore extends TypedBaseStore<IAppState> {
+  /** The one application-owned custom command, independent of popup lifetime. */
+  public readonly customCommandStore = new CustomCommandStore(() =>
+    this.emitUpdate()
+  )
   private readonly gitStoreCache: GitStoreCache
 
   private accounts: ReadonlyArray<Account> = new Array<Account>()
@@ -1295,9 +1303,15 @@ export class AppStore extends TypedBaseStore<IAppState> {
       ...this.repositories,
       ...this.cloningRepositoriesStore.repositories,
     ]
+    const selectedRepo =
+      this.selectedRepository instanceof Repository
+        ? this.selectedRepository
+        : null
 
     return {
       accounts: this.accounts,
+      customCommandTask: this.customCommandStore.getTask(selectedRepo),
+      customCommandTasks: this.customCommandStore.getAllTasks(),
       repositories,
       recentRepositories: this.recentRepositories,
       localRepositoryStateLookup: this.localRepositoryStateLookup,
@@ -2950,16 +2964,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const isStashedChangesVisible =
       changesState.selection.kind === ChangesSelectionKind.Stash
 
-    const askForConfirmationWhenStashingAllChanges =
-      changesState.stashEntry !== null
-
     updatePreferredAppMenuItemLabels({
       ...labels,
       contributionTargetDefaultBranch,
       isForcePushForCurrentRepository,
       isStashedChangesVisible,
       hasCurrentPullRequest: currentPullRequest !== null,
-      askForConfirmationWhenStashingAllChanges,
       isChangesFilterVisible: this.showChangesFilter,
     })
   }
@@ -4613,9 +4623,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
    * repository.
    *
    * When provided with an explicit strategy other than `AskForConfirmation`
-   * we assume the user has been informed of any risks of overwritten stashes
-   * and such. In other words the only consumers who should pass an explicit
-   * strategy are dialogs and other confirmation constructs where the user
+   * we assume the user has chosen how to handle their changes. The only
+   * consumers who should pass an explicit strategy are dialogs and other
+   * confirmation constructs where the user
    * has made an explicit choice about how to proceed.
    *
    * Note: This shouldn't be called directly. See `Dispatcher`.
@@ -4627,7 +4637,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
   ): Promise<Repository> {
     const repositoryState = this.repositoryStateCache.get(repository)
     const { changesState, branchesState } = repositoryState
-    const { currentBranchProtected, stashEntry } = changesState
+    const { currentBranchProtected } = changesState
     const { tip } = branchesState
     const hasChanges = changesState.workingDirectory.files.length > 0
 
@@ -4645,19 +4655,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     let strategy = explicitStrategy ?? this.uncommittedChangesStrategy
-
-    // The user hasn't been presented with an explicit choice
-    if (explicitStrategy === undefined) {
-      // Even if the user has chosen to "always stash on current branch" in
-      // preferences we still want to let them know changes might be lost
-      if (strategy === UncommittedChangesStrategy.StashOnCurrentBranch) {
-        if (hasChanges && stashEntry !== null) {
-          const type = PopupType.ConfirmOverwriteStash
-          this._showPopup({ type, repository, branchToCheckout: branch })
-          return repository
-        }
-      }
-    }
 
     // Always move changes to new branch if we're on a detached head, unborn
     // branch, or a protected branch.
@@ -4718,7 +4715,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
   /**
    * Checkout the given branch and leave any local changes on the current branch
    *
-   * Note that this will ovewrite any existing stash enty on the current branch.
+   * Existing stash entries are retained in the repository stash list.
    */
   private async checkoutAndLeaveChanges(
     repository: Repository,
@@ -4730,7 +4727,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const { tip } = repositoryState.branchesState
 
     if (tip.kind === TipState.Valid && workingDirectory.files.length > 0) {
-      await this.createStashAndDropPreviousEntry(repository, tip.branch)
+      await this.createStashForBranch(repository, tip.branch)
       this.statsStore.increment('stashCreatedOnCurrentBranchCount')
     }
 
@@ -4870,35 +4867,21 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   /**
-   * Creates a stash associated to the current checked out branch.
-   *
-   * @param repository
-   * @param showConfirmationDialog  Whether to show a confirmation
-   *                                dialog if an existing stash exists.
+   * Creates a stash associated to the current checked out branch,
+   * preserving existing stash entries.
    */
   public async _createStashForCurrentBranch(
-    repository: Repository,
-    showConfirmationDialog: boolean
+    repository: Repository
   ): Promise<boolean> {
     const repositoryState = this.repositoryStateCache.get(repository)
     const tip = repositoryState.branchesState.tip
     const currentBranch = tip.kind === TipState.Valid ? tip.branch : null
-    const hasExistingStash = repositoryState.changesState.stashEntry !== null
 
     if (currentBranch === null) {
       return false
     }
 
-    if (showConfirmationDialog && hasExistingStash) {
-      this._showPopup({
-        type: PopupType.ConfirmOverwriteStash,
-        branchToCheckout: null,
-        repository,
-      })
-      return false
-    }
-
-    if (await this.createStashAndDropPreviousEntry(repository, currentBranch)) {
+    if (await this.createStashForBranch(repository, currentBranch)) {
       this.statsStore.increment('stashCreatedOnCurrentBranchCount')
       await this._refreshRepository(repository)
       return true
@@ -7753,6 +7736,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
     scope: CustomCommandScope
   ): Promise<void> {
     try {
+      if (isCustomCommandActive(this.customCommandStore.getTask(repository))) {
+        await this._showCustomCommandTask(repository)
+        return
+      }
       const command = getCustomCommands(
         localStorage,
         repository.path,
@@ -7763,16 +7750,51 @@ export class AppStore extends TypedBaseStore<IAppState> {
           'This custom command no longer exists. Open Configure commands to update the list.'
         )
       }
-      await this._showPopup({
-        type: PopupType.RunCustomCommand,
+      this.customCommandStore.start(
         repository,
         command,
-        expectedDurationMs: getCustomCommandDuration(
-          localStorage,
-          repository.path,
-          command
-        ),
+        getCustomCommandDuration(localStorage, repository.path, command),
+        onOutput => this._executeCustomCommand(repository, command, onOutput)
+      )
+      await this._showCustomCommandTask(repository)
+    } catch (error) {
+      this.emitError(error)
+    }
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
+  public async _showCustomCommandTask(repository?: Repository) {
+    const targetRepo =
+      repository ??
+      (this.selectedRepository instanceof Repository
+        ? this.selectedRepository
+        : undefined)
+    const task = targetRepo
+      ? this.customCommandStore.getTask(targetRepo)
+      : this.customCommandStore.snapshot
+    if (
+      task !== null &&
+      this.popupManager.currentPopup?.type !== PopupType.RunCustomCommand
+    ) {
+      await this._showPopup({
+        type: PopupType.RunCustomCommand,
+        repository: targetRepo,
       })
+    }
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
+  public _dismissCustomCommandResult(repository?: Repository) {
+    const targetRepo =
+      repository ??
+      (this.selectedRepository instanceof Repository
+        ? this.selectedRepository
+        : undefined)
+    try {
+      this.customCommandStore.dismissResult(targetRepo)
+      if (this.popupManager.currentPopup?.type === PopupType.RunCustomCommand) {
+        this._closePopup(PopupType.RunCustomCommand)
+      }
     } catch (error) {
       this.emitError(error)
     }
@@ -9228,24 +9250,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
     )
   }
 
-  private async createStashAndDropPreviousEntry(
-    repository: Repository,
-    branch: Branch
-  ) {
-    const entry = await getLastDesktopStashEntryForBranch(repository, branch)
+  private async createStashForBranch(repository: Repository, branch: Branch) {
     const gitStore = this.gitStoreCache.get(repository)
 
     const createdStash = await gitStore.performFailableOperation(() =>
       this.createStashEntry(repository, branch)
     )
-
-    if (createdStash === true && entry !== null) {
-      const { stashSha, branchName } = entry
-      await gitStore.performFailableOperation(async () => {
-        await dropDesktopStashEntry(repository, stashSha)
-        log.info(`Dropped stash '${stashSha}' associated with ${branchName}`)
-      })
-    }
 
     return createdStash === true
   }
@@ -9294,6 +9304,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
   /** This shouldn't be called directly. See `Dispatcher`. */
   public async _applyRepositoryStash(repository: Repository, stashSha: string) {
     await applyRepositoryStash(repository, stashSha)
+    await this._refreshRepository(repository)
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _popRepositoryStash(repository: Repository, stashSha: string) {
+    await applyRepositoryStash(repository, stashSha)
+    await dropRepositoryStash(repository, stashSha)
+    await this.gitStoreCache.get(repository).loadStashEntries()
     await this._refreshRepository(repository)
   }
 
