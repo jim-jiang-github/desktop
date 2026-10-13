@@ -22,9 +22,32 @@ import {
 describe('local Custom packaging', () => {
   const root = resolve(__dirname, '..')
 
+  function mockEnv(
+    t: { after: (fn: () => void) => void },
+    overrides: Record<string, string | undefined>
+  ) {
+    const previous: Record<string, string | undefined> = {}
+    for (const [key, value] of Object.entries(overrides)) {
+      previous[key] = process.env[key]
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+    t.after(() => {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
+      }
+    })
+  }
+
   it('isolates custom resources and installer identity without publishing', t => {
-    t.mock.property(process, 'env', {
-      ...process.env,
+    mockEnv(t, {
       NODE_ENV: 'production',
       RELEASE_CHANNEL: 'custom',
       npm_config_arch: 'x64',
@@ -49,8 +72,7 @@ describe('local Custom packaging', () => {
   })
 
   it('leaves official production packaging unchanged', t => {
-    t.mock.property(process, 'env', {
-      ...process.env,
+    mockEnv(t, {
       NODE_ENV: 'production',
       RELEASE_CHANNEL: 'production',
     })
@@ -68,8 +90,7 @@ describe('local Custom packaging', () => {
   })
 
   it('leaves development packaging unchanged', t => {
-    t.mock.property(process, 'env', {
-      ...process.env,
+    mockEnv(t, {
       NODE_ENV: 'development',
       RELEASE_CHANNEL: 'development',
     })
