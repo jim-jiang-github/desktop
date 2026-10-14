@@ -31,6 +31,19 @@
           border-color: #ffffff;
           color: #ffffff;
         }
+
+        &.line-ending-mismatch {
+          background: #cf222e;
+          border-color: #ff7b72;
+          color: #ffffff;
+          animation: line-ending-mismatch-pulse-selected 1.8s ease-in-out infinite;
+
+          &:hover:not(:disabled) {
+            background: #a40e26;
+            border-color: #ffffff;
+            color: #ffffff;
+          }
+        }
       }
     }
 
@@ -43,6 +56,19 @@
         &:hover:not(:disabled) {
           border-color: var(--text-color);
           color: var(--text-color);
+        }
+
+        &.line-ending-mismatch {
+          border-color: var(--error-color);
+          color: var(--error-color);
+          background: rgba(229, 83, 75, 0.15);
+          animation: line-ending-mismatch-pulse 1.8s ease-in-out infinite;
+
+          &:hover:not(:disabled) {
+            background: var(--error-color);
+            border-color: var(--error-color);
+            color: #ffffff;
+          }
         }
       }
     }
@@ -95,6 +121,20 @@
         opacity: 0.5;
         cursor: default;
       }
+
+      &.line-ending-mismatch {
+        color: var(--error-color);
+        border-color: var(--error-color);
+        background: rgba(229, 83, 75, 0.15);
+        font-weight: 700;
+        animation: line-ending-mismatch-pulse 1.8s ease-in-out infinite;
+
+        &:hover:not(:disabled) {
+          color: #ffffff;
+          border-color: var(--error-color);
+          background: var(--error-color);
+        }
+      }
     }
 
     .octicon {
@@ -105,5 +145,37 @@
       background-color: inherit;
       color: var(--text-color);
     }
+  }
+}
+
+@keyframes line-ending-mismatch-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(229, 83, 75, 0.7);
+    border-color: var(--error-color);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(229, 83, 75, 0);
+    border-color: #ff7b72;
+    background-color: rgba(229, 83, 75, 0.28);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(229, 83, 75, 0);
+    border-color: var(--error-color);
+  }
+}
+
+@keyframes line-ending-mismatch-pulse-selected {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 123, 114, 0.8);
+    border-color: #ff7b72;
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 123, 114, 0);
+    border-color: #ffffff;
+    background-color: #e5534b;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 123, 114, 0);
+    border-color: #ff7b72;
   }
 }

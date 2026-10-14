@@ -1,5 +1,6 @@
 import * as React from 'react'
 import * as Path from 'path'
+import classNames from 'classnames'
 
 import { PathLabel } from '../lib/path-label'
 import { Octicon, iconForStatus } from '../octicons'
@@ -17,8 +18,10 @@ import { Repository } from '../../models/repository'
 import { Dispatcher } from '../dispatcher'
 import {
   LineEnding,
+  clearLineEndingMismatchCache,
   detectLineEnding,
   getNextLineEnding,
+  isFileLineEndingMismatch,
   toggleLineEnding,
 } from '../../lib/line-ending'
 
@@ -41,6 +44,7 @@ interface IChangedFileProps {
 
 interface IChangedFileState {
   readonly lineEnding: LineEnding | null
+  readonly isLineEndingMismatch: boolean
   readonly isTogglingLineEnding: boolean
 }
 
@@ -55,6 +59,7 @@ export class ChangedFile extends React.Component<
     super(props)
     this.state = {
       lineEnding: null,
+      isLineEndingMismatch: false,
       isTogglingLineEnding: false,
     }
   }
@@ -86,8 +91,11 @@ export class ChangedFile extends React.Component<
       file.status.kind === AppFileStatusKind.Deleted ||
       file.status.submoduleStatus !== undefined
     ) {
-      if (this.state.lineEnding !== null && this.isComponentMounted) {
-        this.setState({ lineEnding: null })
+      if (
+        (this.state.lineEnding !== null || this.state.isLineEndingMismatch) &&
+        this.isComponentMounted
+      ) {
+        this.setState({ lineEnding: null, isLineEndingMismatch: false })
       }
       return
     }
@@ -95,11 +103,32 @@ export class ChangedFile extends React.Component<
     const fullPath = Path.join(repository.path, file.path)
     const lineEnding = await detectLineEnding(fullPath)
     if (
+      !this.isComponentMounted ||
+      this.props.file.id !== file.id ||
+      this.props.repository?.path !== repository.path
+    ) {
+      return
+    }
+
+    if (lineEnding === null) {
+      this.setState({ lineEnding: null, isLineEndingMismatch: false })
+      return
+    }
+
+    let isLineEndingMismatch = false
+    if (file.status.kind === AppFileStatusKind.Modified) {
+      isLineEndingMismatch = await isFileLineEndingMismatch(
+        repository,
+        file.path
+      )
+    }
+
+    if (
       this.isComponentMounted &&
       this.props.file.id === file.id &&
       this.props.repository?.path === repository.path
     ) {
-      this.setState({ lineEnding })
+      this.setState({ lineEnding, isLineEndingMismatch })
     }
   }
 
@@ -123,12 +152,18 @@ export class ChangedFile extends React.Component<
     const nextEnding = getNextLineEnding(lineEnding)
     const fullPath = Path.join(repository.path, file.path)
 
+    clearLineEndingMismatchCache(repository.path, file.path)
     this.setState({ isTogglingLineEnding: true })
 
     try {
       await toggleLineEnding(fullPath, nextEnding)
+      clearLineEndingMismatchCache(repository.path, file.path)
       if (this.isComponentMounted && this.props.file.id === file.id) {
-        this.setState({ lineEnding: nextEnding, isTogglingLineEnding: false })
+        this.setState({
+          lineEnding: nextEnding,
+          isLineEndingMismatch: false,
+          isTogglingLineEnding: false,
+        })
       }
       if (dispatcher !== undefined) {
         dispatcher.refreshRepository(repository)
@@ -226,23 +261,41 @@ export class ChangedFile extends React.Component<
 
         {this.state.lineEnding !== null && (
           <TooltippedContent
-            tooltip={`Line ending: ${
-              this.state.lineEnding
-            }. Click to switch to ${getNextLineEnding(this.state.lineEnding)}`}
+            tooltip={
+              this.state.isLineEndingMismatch
+                ? `Line ending mismatch: entire diff is caused by line endings (${
+                    this.state.lineEnding
+                  }). Click to switch to ${getNextLineEnding(
+                    this.state.lineEnding
+                  )}`
+                : `Line ending: ${
+                    this.state.lineEnding
+                  }. Click to switch to ${getNextLineEnding(
+                    this.state.lineEnding
+                  )}`
+            }
             direction={TooltipDirection.NORTH}
           >
             <button
               type="button"
-              className="line-ending-button"
+              className={classNames('line-ending-button', {
+                'line-ending-mismatch': this.state.isLineEndingMismatch,
+              })}
               onClick={this.onLineEndingClick}
               onMouseDown={this.stopEventPropagation}
               onMouseUp={this.stopEventPropagation}
               onDoubleClick={this.stopEventPropagation}
               disabled={this.state.isTogglingLineEnding}
               tabIndex={-1}
-              aria-label={`Toggle line ending from ${
-                this.state.lineEnding
-              } to ${getNextLineEnding(this.state.lineEnding)}`}
+              aria-label={
+                this.state.isLineEndingMismatch
+                  ? `Line ending mismatch: switch from ${
+                      this.state.lineEnding
+                    } to ${getNextLineEnding(this.state.lineEnding)}`
+                  : `Toggle line ending from ${
+                      this.state.lineEnding
+                    } to ${getNextLineEnding(this.state.lineEnding)}`
+              }
             >
               {this.state.lineEnding}
             </button>

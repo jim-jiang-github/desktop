@@ -3,9 +3,14 @@ import * as assert from 'node:assert'
 import * as FSPromises from 'fs/promises'
 import * as Path from 'path'
 import { createTempDirectory } from '../helpers/temp'
+import { setupEmptyRepository } from '../helpers/repositories'
+import { makeCommit } from '../helpers/repository-scaffolding'
+import { exec } from 'dugite'
 import {
+  clearLineEndingMismatchCache,
   detectLineEnding,
   getNextLineEnding,
+  isFileLineEndingMismatch,
   toggleLineEnding,
 } from '../../src/lib/line-ending'
 
@@ -61,5 +66,70 @@ describe('line-ending', () => {
     const contentCRLF = await FSPromises.readFile(filePath, 'utf8')
     assert.strictEqual(contentCRLF, 'foo\r\nbar\r\nbaz\r\n')
     assert.strictEqual(await detectLineEnding(filePath), 'CRLF')
+  })
+
+  it('detects line ending mismatch when git diff is solely caused by CRLF vs LF', async t => {
+    const repository = await setupEmptyRepository(t)
+    await exec(['config', 'core.autocrlf', 'false'], repository.path)
+
+    const relativePath = 'test-file.txt'
+    const fullPath = Path.join(repository.path, relativePath)
+
+    await makeCommit(repository, {
+      entries: [
+        { path: relativePath, contents: 'line1\nline2\nline3\nline4\n' },
+      ],
+    })
+
+    // Invert line endings to CRLF on disk without any content edits
+    await FSPromises.writeFile(
+      fullPath,
+      'line1\r\nline2\r\nline3\r\nline4\r\n',
+      'utf8'
+    )
+    clearLineEndingMismatchCache(repository.path, relativePath)
+
+    const isMismatch = await isFileLineEndingMismatch(repository, relativePath)
+    assert.strictEqual(isMismatch, true)
+
+    // Edit content with same original LF line endings -> not a line ending mismatch
+    await FSPromises.writeFile(
+      fullPath,
+      'line1\nline2-edited\nline3\nline4\n',
+      'utf8'
+    )
+    clearLineEndingMismatchCache(repository.path, relativePath)
+
+    const isNotMismatch = await isFileLineEndingMismatch(
+      repository,
+      relativePath
+    )
+    assert.strictEqual(isNotMismatch, false)
+  })
+
+  it('detects line ending mismatch when overwhelmingly inverted with small edits', async t => {
+    const repository = await setupEmptyRepository(t)
+    await exec(['config', 'core.autocrlf', 'false'], repository.path)
+
+    const relativePath = 'large-file.txt'
+    const fullPath = Path.join(repository.path, relativePath)
+
+    const originalLines = Array.from(
+      { length: 25 },
+      (_, i) => `line ${i + 1}\n`
+    ).join('')
+    await makeCommit(repository, {
+      entries: [{ path: relativePath, contents: originalLines }],
+    })
+
+    // Invert all 25 lines to CRLF and modify line 3
+    const modifiedLines = Array.from({ length: 25 }, (_, i) =>
+      i === 2 ? 'line 3-modified\r\n' : `line ${i + 1}\r\n`
+    ).join('')
+    await FSPromises.writeFile(fullPath, modifiedLines, 'utf8')
+    clearLineEndingMismatchCache(repository.path, relativePath)
+
+    const isMismatch = await isFileLineEndingMismatch(repository, relativePath)
+    assert.strictEqual(isMismatch, true)
   })
 })
