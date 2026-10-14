@@ -3,8 +3,13 @@ name: Build and release Custom (Windows)
 on:
   workflow_dispatch:
   push:
+    branches:
+      - development-gold
     tags:
       - 'custom-v*'
+  pull_request:
+    branches:
+      - development-gold
 
 permissions:
   contents: read
@@ -15,7 +20,9 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'jim-jiang-github/desktop'
+    if: >-
+      github.repository == 'jim-jiang-github/desktop' && (github.event_name !=
+      'workflow_dispatch' || github.ref == 'refs/heads/development-gold')
     runs-on: windows-2022
     timeout-minutes: 60
     defaults:
@@ -39,6 +46,7 @@ jobs:
           python-version: '3.11'
 
       - name: Validate release tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
