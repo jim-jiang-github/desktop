@@ -3,8 +3,6 @@ name: Build and release Custom (Windows)
 on:
   workflow_dispatch:
   push:
-    branches:
-      - development-gold
     tags:
       - 'custom-v*'
   pull_request:

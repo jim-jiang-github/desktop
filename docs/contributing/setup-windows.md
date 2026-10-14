@@ -307,11 +307,11 @@ Commit and push the workflow and all Custom source changes to your fork. Enable
 Actions in the fork if GitHub asks you to do so. To use **Actions > Build and
 release Custom (Windows) > Run workflow**, the workflow must also exist on the
 fork's default branch (`development-gold`); select `development-gold` when
-running it. Manual runs on other branches are skipped. Pushes to
-`development-gold` and pull requests targeting it also run the build automatically;
-pushes to the upstream-sync branch `development` do not. Branch, pull request,
-and manual runs only build: download `custom-windows-x64` from the run's artifacts
-within 14 days.
+running it. Manual runs on other branches are skipped. Pull requests targeting
+`development-gold` also run the build automatically. Branch pushes do not trigger
+this workflow, so pushing a branch and a release tag together builds only once.
+Pull request and manual runs only build: download `custom-windows-x64` from the
+run's artifacts within 14 days.
 
 To create a release, push a tag matching **exactly** `custom-v` followed by the
 version in `app/package.json`, on the commit you want to ship. For example, for
