@@ -76,8 +76,14 @@ it('announces a background result without adding a persistent result button', ()
   assert.ok(screen.getByText(/Failed \(exit code 7\). Open Custom commands/))
   advanceTimersBy(7100)
   assert.equal(screen.getAllByRole('button').length, 1)
+  assert.ok(view.container.querySelector('.custom-command-button-failed'))
+  assert.ok(view.container.querySelector('.custom-command-task-pulse-failed'))
   assert.ok(screen.getByText('Failed (exit code 7)'))
   view.rerender(<CustomCommandMenuButton {...props} task={null} />)
+  assert.equal(
+    view.container.querySelector('.custom-command-button-failed'),
+    null
+  )
   assert.equal(screen.queryByText('Failed (exit code 7)'), null)
   assert.ok(screen.getByRole('button', { name: 'Custom commands' }))
 })

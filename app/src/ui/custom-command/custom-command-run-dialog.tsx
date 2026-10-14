@@ -33,6 +33,11 @@ export function CustomCommandRunDialog({
     () => store.subscribe(() => setTask(store.getTask(repository))),
     [store, repository]
   )
+  React.useEffect(() => {
+    if (task === null) {
+      onDismissed()
+    }
+  }, [task, onDismissed])
   React.useEffect(
     () =>
       store.subscribeOutput(repository, chunk =>
@@ -53,6 +58,13 @@ export function CustomCommandRunDialog({
   const onStop = React.useCallback(() => {
     store.stop(repository)
   }, [store, repository])
+
+  const onClose = React.useCallback(() => {
+    if (isCustomCommandActive(store.getTask(repository))) {
+      store.runInBackground(repository)
+    }
+    onDismissed()
+  }, [store, repository, onDismissed])
 
   const onCopyOutput = React.useCallback(async () => {
     const contents = terminal.current?.getBufferContents()
@@ -82,8 +94,8 @@ export function CustomCommandRunDialog({
       title={task.command.name}
       loading={active}
       backdropDismissable={false}
-      onDismissed={onDismissed}
-      onSubmit={onDismissed}
+      onDismissed={onClose}
+      onSubmit={onClose}
     >
       <DialogContent>
         <div className="command-run-status" role="status" data-failed={failed}>
@@ -158,7 +170,7 @@ export function CustomCommandRunDialog({
         )}
         <p className="command-run-hint">
           {active
-            ? 'Output appears as the command produces it. Interactive prompts are not supported. Run in background to keep working in Desktop.'
+            ? 'Output appears as the command produces it. Interactive prompts are not supported. Background commands are cleared on success; failed output is kept.'
             : 'Use Custom commands > Show command output to view these logs again, or Dismiss command result to clear them.'}
         </p>
       </DialogContent>

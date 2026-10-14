@@ -289,6 +289,12 @@ rebuilding, since that directory is replaced. Installed copies are unaffected.
 Custom commands that invoke Node, npm or a compiler still require those tools
 on the destination computer.
 
+Custom commands sent to **Run in background** are automatically removed, along
+with their output, when they succeed. Failures retain their output and highlight
+the **Custom commands** toolbar button with a red pulse until the result is
+dismissed or replaced by a new command. Use **Show command output** to inspect
+the failure. Foreground command results remain available after completion.
+
 ## Publishing Custom builds on GitHub
 
 The fork-specific workflow `.github/workflows/custom-release.yml` builds unsigned

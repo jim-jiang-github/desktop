@@ -49,6 +49,7 @@ export function isCustomCommandActive(
 
 interface IRepositoryExecutionState {
   task: ICustomCommandTask
+  background: boolean
   execution: ICustomCommandExecution | null
   timer: number | undefined
   startedAt: number
@@ -66,7 +67,7 @@ export class CustomCommandStore {
 
   public constructor(private readonly onUpdate: () => void) {}
 
-  /** The most recent task, retained after completion until replaced explicitly. */
+  /** The most recent task, excluding automatically cleared background successes. */
   public get snapshot() {
     return this.getTask()
   }
@@ -135,6 +136,19 @@ export class CustomCommandStore {
       this.mostRecentKey = this.findNextMostRecentKey()
     }
     this.emit()
+  }
+
+  /** Hide a command, automatically discarding its result if it succeeds. */
+  public runInBackground(repository?: { readonly path: string } | null) {
+    const key = repository ? getRepositoryKey(repository) : this.mostRecentKey
+    const state = key === null ? undefined : this.states.get(key)
+    if (state === undefined) {
+      return
+    }
+    state.background = true
+    if (state.task.status === 'succeeded') {
+      this.dismissResult(repository)
+    }
   }
 
   private findNextMostRecentKey(): string | null {
@@ -280,6 +294,7 @@ export class CustomCommandStore {
 
     const state: IRepositoryExecutionState = {
       task,
+      background: false,
       execution: null,
       timer: undefined,
       startedAt: performance.now(),
@@ -360,15 +375,23 @@ export class CustomCommandStore {
       }
       state.execution = null
       this.append(key, state.decoder.end())
-      this.update(key, {
+      state.task = {
+        ...state.task,
         ...change,
         elapsedMs: performance.now() - state.startedAt,
-      })
+      }
+      if (state.background && state.task.status === 'succeeded') {
+        this.states.delete(key)
+        if (this.mostRecentKey === key) {
+          this.mostRecentKey = this.findNextMostRecentKey()
+        }
+      }
     }
 
     if (!this.isAnyCommandActive()) {
       window.removeEventListener('beforeunload', this.preventClose)
     }
+    this.emit()
   }
 
   /** Stop only the execution for the given repository (or most recent). */

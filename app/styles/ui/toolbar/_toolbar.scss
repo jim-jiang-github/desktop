@@ -54,6 +54,10 @@
     > button {
       isolation: isolate;
     }
+
+    &.custom-command-button-failed > button {
+      box-shadow: inset 0 0 0 2px #e5534b;
+    }
   }
 
   .custom-command-task-pulse {
@@ -67,6 +71,15 @@
     @media (prefers-reduced-motion: reduce) {
       animation: none;
       opacity: 0.12;
+    }
+
+    &.custom-command-task-pulse-failed {
+      background: #e5534b;
+      animation: custom-command-task-attention 1.8s ease-in-out infinite;
+      @media (prefers-reduced-motion: reduce) {
+        animation: none;
+        opacity: 0.2;
+      }
     }
   }
 }

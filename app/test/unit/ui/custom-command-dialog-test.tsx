@@ -519,7 +519,7 @@ describe('custom command dialog', () => {
     }
   }
 
-  it('streams output in-app and keeps the first run indeterminate until successful', async t => {
+  it('streams output in-app and clears successful commands sent to background', async t => {
     const run = setupExecution(t)
     assert.equal(screen.getByRole('progressbar').hasAttribute('value'), false)
     assert.match(screen.getByRole('status').textContent ?? '', /Running/)
@@ -531,13 +531,9 @@ describe('custom command dialog', () => {
     fireEvent.submit(form)
     assert.equal(run.isDismissed(), true)
     run.finish({ kind: 'exited', exitCode: 0 })
-    await waitFor(() =>
-      assert.match(
-        screen.getByRole('status').textContent ?? '',
-        /Completed successfully/
-      )
-    )
-    assert.equal(screen.getByRole('progressbar').getAttribute('value'), '100')
+    await waitFor(() => assert.equal(run.store.snapshot, null))
+    assert.equal(screen.queryByRole('progressbar'), null)
+    assert.equal(screen.queryByRole('dialog'), null)
     assert.equal(run.dispatcher.executeCustomCommand.mock.callCount(), 1)
     fireEvent.submit(form)
     assert.equal(run.isDismissed(), true)
@@ -691,12 +687,19 @@ describe('custom command dialog', () => {
 
   it('keeps running and replays background output when the execution dialog is restored', async t => {
     const run = setupExecution(t)
+    fireEvent.click(screen.getByRole('button', { name: 'Run in background' }))
     run.view.unmount()
     unmount = undefined
     assert.equal(run.stop.mock.callCount(), 0)
     run.output(Buffer.from('output while hidden'))
+    let closed = false
     const restored = render(
-      <CustomCommandRunDialog store={run.store} onDismissed={() => {}} />
+      <CustomCommandRunDialog
+        store={run.store}
+        onDismissed={() => {
+          closed = true
+        }}
+      />
     )
     unmount = restored.unmount
     assert.equal(run.dispatcher.executeCustomCommand.mock.callCount(), 1)
@@ -707,6 +710,8 @@ describe('custom command dialog', () => {
     window.dispatchEvent(closing)
     assert.equal(closing.defaultPrevented, true)
     run.finish({ kind: 'exited', exitCode: 0 })
-    await waitFor(() => assert.equal(run.store.snapshot?.status, 'succeeded'))
+    await waitFor(() => assert.equal(run.store.snapshot, null))
+    assert.equal(closed, true)
+    assert.equal(screen.queryByRole('dialog'), null)
   })
 })

@@ -43,6 +43,66 @@ function setup(t: TestContext, expectedDurationMs: number | null = null) {
 }
 
 describe('application-owned custom command', () => {
+  it('clears successful background tasks and output but retains foreground results', async t => {
+    const run = setup(t)
+    run.output(Buffer.from('background output'))
+    run.store.runInBackground(run.repository)
+    await run.finish({ kind: 'exited', exitCode: 0 })
+    assert.equal(run.store.getTask(run.repository), null)
+    assert.equal(run.store.getAllTasks().size, 0)
+    const output: string[] = []
+    run.store.subscribeOutput(run.repository, text => output.push(text))()
+    assert.deepEqual(output, [])
+    const closing = new window.Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(closing)
+    assert.equal(closing.defaultPrevented, false)
+
+    const foreground = setup(t)
+    await foreground.finish({ kind: 'exited', exitCode: 0 })
+    assert.equal(foreground.store.snapshot?.status, 'succeeded')
+  })
+
+  it('retains failed background tasks and output until dismissed', async t => {
+    const run = setup(t)
+    run.output(Buffer.from('failure details'))
+    run.store.runInBackground(run.repository)
+    await run.finish({ kind: 'exited', exitCode: 7 })
+    assert.equal(run.store.getTask(run.repository)?.status, 'failed')
+    const output: string[] = []
+    run.store.subscribeOutput(run.repository, text => output.push(text))()
+    assert.deepEqual(output, ['failure details'])
+    run.store.dismissResult(run.repository)
+    assert.equal(run.store.getTask(run.repository), null)
+  })
+
+  it('only clears the successful background task while another repository runs', async t => {
+    const run = setup(t)
+    const other = new Repository('C:\\other\\checkout', 2, null, false)
+    let finishOther!: (result: CustomCommandResult) => void
+    const result = new Promise<CustomCommandResult>(resolve => {
+      finishOther = resolve
+    })
+    run.store.start(other, run.command, null, onOutput => {
+      onOutput(Buffer.from('other output'))
+      return { result, stop: async () => {} }
+    })
+    t.after(async () => {
+      finishOther({ kind: 'cancelled' })
+      await result
+    })
+    run.store.runInBackground(run.repository)
+    await run.finish({ kind: 'exited', exitCode: 0 })
+    assert.equal(run.store.getTask(run.repository), null)
+    assert.equal(run.store.getTask(other)?.status, 'running')
+    assert.equal(run.store.snapshot?.repository, other)
+    assert.equal(run.store.getAllTasks().size, 1)
+    const output: string[] = []
+    run.store.subscribeOutput(other, text => output.push(text))()
+    assert.deepEqual(output, ['other output'])
+    const closing = new window.Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(closing)
+    assert.equal(closing.defaultPrevented, true)
+  })
   it('only explicitly clears finished results and their retained output', async t => {
     const run = setup(t)
     run.output(Buffer.from('retained log'))

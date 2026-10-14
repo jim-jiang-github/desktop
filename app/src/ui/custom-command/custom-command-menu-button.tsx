@@ -1,4 +1,5 @@
 import * as React from 'react'
+import classNames from 'classnames'
 import {
   ICustomCommandTask,
   isCustomCommandActive,
@@ -15,7 +16,7 @@ interface ICustomCommandMenuButtonProps {
   readonly disabled: boolean
 }
 
-/** The existing commands menu, with a finite background-task cue and optional hint. */
+/** The commands menu, with background hints and a persistent failure cue. */
 export function CustomCommandMenuButton({
   task,
   isDialogOpen,
@@ -33,6 +34,7 @@ export function CustomCommandMenuButton({
     closeWarning: task?.closeWarning,
   })
   const active = isCustomCommandActive(task)
+  const failed = task?.status === 'failed'
   React.useEffect(() => {
     const old = previous.current
     if (!task) {
@@ -76,7 +78,9 @@ export function CustomCommandMenuButton({
   return (
     <div className="custom-command-menu-container">
       <ToolbarButton
-        className="custom-command-button"
+        className={classNames('custom-command-button', {
+          'custom-command-button-failed': failed,
+        })}
         icon={octicons.terminal}
         title="Custom commands"
         description="Run or configure"
@@ -90,10 +94,12 @@ export function CustomCommandMenuButton({
         disabled={disabled}
         onClick={onShowMenu}
       >
-        {notice !== null && (
+        {(notice !== null || failed) && (
           <span
-            key={notice.id}
-            className="custom-command-task-pulse"
+            key={failed ? 'failed' : notice?.id}
+            className={classNames('custom-command-task-pulse', {
+              'custom-command-task-pulse-failed': failed,
+            })}
             aria-hidden="true"
           />
         )}
