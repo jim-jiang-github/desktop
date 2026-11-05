@@ -13,7 +13,14 @@ import { GitStore } from '../../src/lib/stores'
 import { AppFileStatusKind } from '../../src/models/status'
 import { Repository } from '../../src/models/repository'
 import { TipState, IValidBranch } from '../../src/models/tip'
-import { getCommit, getRemotes } from '../../src/lib/git'
+import {
+  getCommit,
+  getCommits,
+  getRemotes,
+  getAuthorFilterArgs,
+  git,
+} from '../../src/lib/git'
+import { ComparisonMode } from '../../src/lib/app-state'
 import { getStatusOrThrow } from '../helpers/status'
 import {
   makeCommit,
@@ -26,6 +33,90 @@ import { isolateGitConfig } from '../helpers/git-config'
 
 describe('GitStore', () => {
   describe('loadCommitBatch', () => {
+    it('loads filtered history beyond the first page and shares overlapping requests', async t => {
+      const path = await setupFixtureRepository(
+        t,
+        'repository-with-105-commits'
+      )
+      const repo = new Repository(path, -1, null, false)
+      const gitStore = new GitStore(repo, shell, new TestStatsStore())
+      const all = await getCommits(repo, 'HEAD')
+      const query = all[0].author.email
+      const expected = await getCommits(
+        repo,
+        'HEAD',
+        undefined,
+        undefined,
+        getAuthorFilterArgs(query)
+      )
+      assert.ok(expected.length > 100)
+      const [first, duplicate] = await Promise.all([
+        gitStore.loadCommitBatch('HEAD', 0, query),
+        gitStore.loadCommitBatch('HEAD', 0, query),
+      ])
+      assert.ok(first)
+      assert.deepStrictEqual(
+        first,
+        expected.slice(0, 100).map(c => c.sha)
+      )
+      assert.deepStrictEqual(duplicate, first)
+      const second = await gitStore.loadCommitBatch('HEAD', first.length, query)
+      assert.deepStrictEqual(
+        second,
+        expected.slice(100).map(c => c.sha)
+      )
+      assert.ok(
+        [...first, ...(second ?? [])].every(sha =>
+          gitStore.commitLookup.has(sha)
+        )
+      )
+    })
+
+    it('filters comparison commits without changing ahead and behind totals', async t => {
+      const repo = await setupEmptyRepository(t)
+      await git(['commit', '--allow-empty', '-m', 'base'], repo.path, 'test')
+      await git(['branch', 'topic'], repo.path, 'test')
+      await git(
+        [
+          'commit',
+          '--allow-empty',
+          '--author=Alice <alice@example.com>',
+          '-m',
+          'alice ahead',
+        ],
+        repo.path,
+        'test'
+      )
+      await git(
+        [
+          'commit',
+          '--allow-empty',
+          '--author=Bob <bob@example.com>',
+          '-m',
+          'bob ahead',
+        ],
+        repo.path,
+        'test'
+      )
+      const gitStore = new GitStore(repo, shell, new TestStatsStore())
+      await gitStore.loadStatus()
+      await gitStore.loadBranches()
+      const topic = gitStore.allBranches.find(b => b.name === 'topic')
+      assert.ok(topic)
+      const compare = await gitStore.getCompareCommits(
+        topic,
+        ComparisonMode.Ahead,
+        'Alice'
+      )
+      assert.ok(compare)
+      assert.strictEqual(compare.ahead, 2)
+      assert.strictEqual(compare.behind, 0)
+      assert.deepStrictEqual(
+        compare.commits.map(c => c.summary),
+        ['alice ahead']
+      )
+    })
+
     it('includes HEAD when loading commits', async t => {
       const path = await setupFixtureRepository(
         t,

@@ -265,6 +265,7 @@ import {
   TerminalOutput,
   HookProgress,
   git,
+  revertFileChanges,
 } from '../git'
 import {
   installGlobalLFSFilters,
@@ -723,6 +724,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
   private repositoryFilterText: string = ''
 
   private currentMergeTreePromise: Promise<void> | null = null
+  private readonly compareRequests = new Map<
+    string,
+    { readonly version: number; readonly action: CompareAction }
+  >()
 
   /** The function to resolve the current Open in Desktop flow. */
   private resolveOpenInDesktop:
@@ -1631,6 +1636,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
   private clearSelectedCommit(repository: Repository) {
     this.repositoryStateCache.updateCommitSelection(repository, () => ({
       shas: [],
+      shasInDiff: [],
+      isContiguous: true,
       file: null,
       changesetData: { files: [], linesAdded: 0, linesDeleted: 0 },
       diff: null,
@@ -1826,6 +1833,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
   ): Promise<void> {
     const gitStore = this.gitStoreCache.get(repository)
     const kind = action.kind
+    const requestVersion =
+      (this.compareRequests.get(repository.hash)?.version ?? 0) + 1
+    this.compareRequests.set(repository.hash, {
+      version: requestVersion,
+      action,
+    })
+    const { authorFilterText } =
+      this.repositoryStateCache.get(repository).compareState
 
     if (action.kind === HistoryTabMode.History) {
       const { tip } = gitStore
@@ -1858,9 +1873,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
       }
 
       // load initial group of commits for current branch
-      const commits = await gitStore.loadCommitBatch('HEAD', 0)
+      const commits = await gitStore.loadCommitBatch(
+        'HEAD',
+        0,
+        authorFilterText
+      )
 
-      if (commits === null) {
+      if (
+        commits === null ||
+        this.compareRequests.get(repository.hash)?.version !== requestVersion
+      ) {
         return
       }
 
@@ -1881,7 +1903,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     if (action.kind === HistoryTabMode.Compare) {
-      return this.updateCompareToBranch(repository, action)
+      return this.updateCompareToBranch(repository, action, requestVersion)
     }
 
     return assertNever(action, `Unknown action: ${kind}`)
@@ -1889,14 +1911,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
   private async updateCompareToBranch(
     repository: Repository,
-    action: ICompareToBranch
+    action: ICompareToBranch,
+    requestVersion: number
   ) {
     const gitStore = this.gitStoreCache.get(repository)
 
     const comparisonBranch = action.branch
     const compare = await gitStore.getCompareCommits(
       comparisonBranch,
-      action.comparisonMode
+      action.comparisonMode,
+      this.repositoryStateCache.get(repository).compareState.authorFilterText
     )
 
     this.statsStore.increment('branchComparisons')
@@ -1909,7 +1933,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.statsStore.increment('defaultBranchComparisons')
     }
 
-    if (compare == null) {
+    if (
+      compare == null ||
+      this.compareRequests.get(repository.hash)?.version !== requestVersion
+    ) {
       return
     }
 
@@ -2006,11 +2033,37 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _setHistoryAuthorFilter(
+    repository: Repository,
+    authorFilterText: string
+  ): Promise<void> {
+    const { compareState } = this.repositoryStateCache.get(repository)
+    if (compareState.authorFilterText === authorFilterText) {
+      return
+    }
+
+    this.repositoryStateCache.updateCompareState(repository, () => ({
+      authorFilterText,
+      commitSHAs: [],
+      tip: null,
+      shasToHighlight: [],
+      showBranchList: false,
+    }))
+    this.clearSelectedCommit(repository)
+    this.emitUpdate()
+    await this._executeCompare(
+      repository,
+      this.compareRequests.get(repository.hash)?.action ??
+        getInitialAction(compareState.formState)
+    )
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
   public async _loadNextCommitBatch(repository: Repository): Promise<void> {
     const gitStore = this.gitStoreCache.get(repository)
 
     const state = this.repositoryStateCache.get(repository)
-    const { formState } = state.compareState
+    const { formState, authorFilterText } = state.compareState
     if (formState.kind === HistoryTabMode.History) {
       const commits = state.compareState.commitSHAs
 
@@ -2021,6 +2074,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       // Prioritize pulling from the local commits if the last one we pulled is local
       if (
         commits.length > 0 &&
+        authorFilterText.trim().length === 0 &&
         tip.kind === TipState.Valid &&
         gitStore.localCommitSHAs.includes(commits[commits.length - 1])
       ) {
@@ -2028,10 +2082,24 @@ export class AppStore extends TypedBaseStore<IAppState> {
       }
 
       if (!newCommits || newCommits.length === 0) {
-        newCommits = await gitStore.loadCommitBatch('HEAD', commits.length)
+        newCommits = await gitStore.loadCommitBatch(
+          'HEAD',
+          commits.length,
+          authorFilterText
+        )
       }
 
       if (!newCommits) {
+        return
+      }
+
+      const currentState =
+        this.repositoryStateCache.get(repository).compareState
+      if (
+        currentState.commitSHAs !== commits ||
+        currentState.authorFilterText !== authorFilterText ||
+        currentState.formState !== formState
+      ) {
         return
       }
 
@@ -8727,6 +8795,49 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.updateRevertProgress(repository, null)
       await this._refreshRepository(repository)
     })
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _revertFileChanges(
+    repository: Repository,
+    commit: Commit,
+    file: CommittedFileChange
+  ): Promise<void> {
+    const gitStore = this.gitStoreCache.get(repository)
+    const result = await gitStore.performFailableOperation(() =>
+      revertFileChanges(repository, commit, file)
+    )
+
+    await this._refreshRepository(repository)
+    if (result === undefined) {
+      return
+    }
+
+    await this._changeRepositorySection(
+      repository,
+      RepositorySectionTab.Changes
+    )
+    const { workingDirectory } =
+      this.repositoryStateCache.get(repository).changesState
+    await this._selectWorkingDirectoryFiles(
+      repository,
+      workingDirectory.files.filter(
+        changed =>
+          changed.path === file.path ||
+          (file.status.kind === AppFileStatusKind.Renamed &&
+            changed.path === file.status.oldPath)
+      )
+    )
+    if (result === 'conflicted') {
+      this.emitError(
+        new ErrorWithMetadata(
+          new Error(
+            'Reverting changes to this file caused conflicts with later changes. Resolve the conflicts in Changes before committing.'
+          ),
+          { repository }
+        )
+      )
+    }
   }
 
   public async _installGlobalLFSFilters(force: boolean): Promise<void> {

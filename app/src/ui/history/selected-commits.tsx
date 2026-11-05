@@ -38,6 +38,7 @@ import { ExpandableCommitSummary } from './expandable-commit-summary'
 import { DiffHeader } from '../diff/diff-header'
 import { Account } from '../../models/account'
 import { Emoji } from '../../lib/emoji'
+import { PopupType } from '../../models/popup'
 
 interface ISelectedCommitsProps {
   readonly repository: Repository
@@ -383,17 +384,6 @@ export class SelectedCommits extends React.Component<
 
     const fullPath = Path.join(repository.path, file.path)
     const fileExistsOnDisk = await pathExists(fullPath)
-    if (!fileExistsOnDisk) {
-      showContextualMenu([
-        {
-          label: __DARWIN__
-            ? 'File Does Not Exist on Disk'
-            : 'File does not exist on disk',
-          enabled: false,
-        },
-      ])
-      return
-    }
 
     const extension = Path.extname(file.path)
 
@@ -449,6 +439,30 @@ export class SelectedCommits extends React.Component<
         !!gitHubRepository &&
         this.props.selectedCommits.length > 0,
     })
+
+    const commit =
+      selectedCommits.length === 1 && selectedCommits[0].sha === file.commitish
+        ? selectedCommits[0]
+        : undefined
+    items.push(
+      { type: 'separator' },
+      {
+        label: __DARWIN__
+          ? 'Revert Changes to This File…'
+          : 'Revert changes to this file…',
+        enabled: commit !== undefined,
+        action: () => {
+          if (commit !== undefined) {
+            this.props.dispatcher.showPopup({
+              type: PopupType.ConfirmRevertFileChanges,
+              repository,
+              commit,
+              file,
+            })
+          }
+        },
+      }
+    )
 
     showContextualMenu(items)
   }

@@ -8,7 +8,7 @@ import { Branch } from './branch'
 import { ReleaseNote, ReleaseSummary } from './release-notes'
 import { IRemote } from './remote'
 import { RetryAction } from './retry-actions'
-import { WorkingDirectoryFileChange } from './status'
+import { CommittedFileChange, WorkingDirectoryFileChange } from './status'
 import { PreferencesTab } from './preferences'
 import { Commit, CommitOneLine, ICommitContext } from './commit'
 import { IStashEntry } from './stash-entry'
@@ -72,6 +72,7 @@ export enum PopupType {
   ConfirmDiscardStash = 'ConfirmDiscardStash',
   ConfirmRestoreRepositoryStash = 'ConfirmRestoreRepositoryStash',
   ConfirmCheckoutCommit = 'ConfirmCheckoutCommit',
+  ConfirmRevertFileChanges = 'ConfirmRevertFileChanges',
   CreateTutorialRepository = 'CreateTutorialRepository',
   ConfirmExitTutorial = 'ConfirmExitTutorial',
   PushRejectedDueToMissingWorkflowScope = 'PushRejectedDueToMissingWorkflowScope',
@@ -137,6 +138,12 @@ interface IBasePopup {
 }
 
 export type PopupDetail =
+  | {
+      type: PopupType.ConfirmRevertFileChanges
+      repository: Repository
+      commit: Commit
+      file: CommittedFileChange
+    }
   | {
       type: PopupType.RunCustomCommand
       repository?: Repository

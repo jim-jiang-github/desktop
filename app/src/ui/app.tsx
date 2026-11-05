@@ -126,6 +126,7 @@ import { StashAndSwitchBranch } from './stash-changes/stash-and-switch-branch-di
 import { ConfirmDiscardStashDialog } from './stashing/confirm-discard-stash'
 import { ConfirmRestoreStashDialog } from './stashing/confirm-restore-stash'
 import { ConfirmCheckoutCommitDialog } from './checkout/confirm-checkout-commit'
+import { ConfirmRevertFileChangesDialog } from './history/confirm-revert-file-changes'
 import { CreateTutorialRepositoryDialog } from './no-repositories/create-tutorial-repository-dialog'
 import { ConfirmExitTutorial } from './tutorial'
 import { TutorialStep, isValidTutorialStep } from '../models/tutorial-step'
@@ -149,7 +150,8 @@ import {
   getAccountForCopilotConflictResolution,
   getAccountForRepository,
 } from '../lib/get-account-for-repository'
-import { CommitOneLine } from '../models/commit'
+import { Commit, CommitOneLine } from '../models/commit'
+import { CommittedFileChange } from '../models/status'
 import { CommitDragElement } from './drag-elements/commit-drag-element'
 import classNames from 'classnames'
 import { MoveToApplicationsFolder } from './move-to-applications-folder'
@@ -2301,6 +2303,18 @@ export class App extends React.Component<IAppProps, IAppState> {
           />
         )
       }
+      case PopupType.ConfirmRevertFileChanges: {
+        return (
+          <ConfirmRevertFileChangesDialog
+            key="confirm-revert-file-changes"
+            repository={popup.repository}
+            commit={popup.commit}
+            file={popup.file}
+            onRevert={this.onRevertFileChanges}
+            onDismissed={onPopupDismissedFn}
+          />
+        )
+      }
       case PopupType.CreateTutorialRepository: {
         return (
           <CreateTutorialRepositoryDialog
@@ -3358,6 +3372,12 @@ export class App extends React.Component<IAppProps, IAppState> {
   private onRetryAction = (retryAction: RetryAction) => {
     this.props.dispatcher.performRetry(retryAction)
   }
+
+  private onRevertFileChanges = (
+    repository: Repository,
+    commit: Commit,
+    file: CommittedFileChange
+  ) => this.props.dispatcher.revertFileChanges(repository, commit, file)
 
   private showPopup = (popup: Popup) => {
     this.props.dispatcher.showPopup(popup)

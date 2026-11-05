@@ -250,6 +250,14 @@ export class Dispatcher {
     return this.appStore._loadNextCommitBatch(repository)
   }
 
+  /** Filter history and comparison commits by their author name or email. */
+  public setHistoryAuthorFilter(
+    repository: Repository,
+    authorFilterText: string
+  ): Promise<void> {
+    return this.appStore._setHistoryAuthorFilter(repository, authorFilterText)
+  }
+
   /** Load the changed files for the current history selection. */
   public loadChangedFilesForCurrentSelection(
     repository: Repository
@@ -980,6 +988,15 @@ export class Dispatcher {
   /** Revert the commit with the given SHA */
   public revertCommit(repository: Repository, commit: Commit): Promise<void> {
     return this.appStore._revertCommit(repository, commit)
+  }
+
+  /** Revert one file's changes from a commit without creating a commit. */
+  public revertFileChanges(
+    repository: Repository,
+    commit: Commit,
+    file: CommittedFileChange
+  ): Promise<void> {
+    return this.appStore._revertFileChanges(repository, commit, file)
   }
 
   /**

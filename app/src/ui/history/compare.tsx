@@ -182,6 +182,20 @@ export class CompareSidebar extends React.Component<
           />
         </div>
 
+        <div className="history-author-filter">
+          <TextBox
+            ariaLabel="Filter commits by author"
+            placeholder="Filter by author name or email"
+            prefixedIcon={octicons.person}
+            type="search"
+            displayClearButton={true}
+            value={this.props.compareState.authorFilterText}
+            onValueChanged={this.onAuthorFilterChanged}
+            onSearchCleared={this.onAuthorFilterCleared}
+            disabled={this.props.isMultiCommitOperationInProgress === true}
+          />
+        </div>
+
         {showBranchList ? this.renderFilterList() : this.renderCommits()}
       </div>
     )
@@ -217,10 +231,13 @@ export class CompareSidebar extends React.Component<
   }
 
   private renderCommitList() {
-    const { formState, commitSHAs } = this.props.compareState
+    const { formState, commitSHAs, authorFilterText } = this.props.compareState
+    const isAuthorFiltered = authorFilterText.trim().length > 0
 
     let emptyListMessage: string | JSX.Element
-    if (formState.kind === HistoryTabMode.History) {
+    if (isAuthorFiltered) {
+      emptyListMessage = 'No commits match this author'
+    } else if (formState.kind === HistoryTabMode.History) {
       emptyListMessage = 'No history'
     } else {
       const currentlyComparedBranchName = formState.comparisonBranch.name
@@ -250,10 +267,16 @@ export class CompareSidebar extends React.Component<
         shasToHighlight={this.props.shasToHighlight}
         localCommitSHAs={this.props.localCommitSHAs}
         canResetToCommits={formState.kind === HistoryTabMode.History}
-        canUndoCommits={formState.kind === HistoryTabMode.History}
-        canAmendCommits={formState.kind === HistoryTabMode.History}
+        canUndoCommits={
+          formState.kind === HistoryTabMode.History && !isAuthorFiltered
+        }
+        canAmendCommits={
+          formState.kind === HistoryTabMode.History && !isAuthorFiltered
+        }
         emoji={this.props.emoji}
-        reorderingEnabled={formState.kind === HistoryTabMode.History}
+        reorderingEnabled={
+          formState.kind === HistoryTabMode.History && !isAuthorFiltered
+        }
         onViewCommitOnGitHub={this.props.onViewCommitOnGitHub}
         onUndoCommit={this.onUndoCommit}
         onResetToCommit={this.onResetToCommit}
@@ -280,8 +303,12 @@ export class CompareSidebar extends React.Component<
         tagsToPush={this.props.tagsToPush ?? []}
         onRenderCommitDragElement={this.onRenderCommitDragElement}
         onRemoveCommitDragElement={this.onRemoveCommitDragElement}
-        disableReordering={formState.kind === HistoryTabMode.Compare}
-        disableSquashing={formState.kind === HistoryTabMode.Compare}
+        disableReordering={
+          formState.kind === HistoryTabMode.Compare || isAuthorFiltered
+        }
+        disableSquashing={
+          formState.kind === HistoryTabMode.Compare || isAuthorFiltered
+        }
         isMultiCommitOperationInProgress={
           this.props.isMultiCommitOperationInProgress
         }
@@ -506,7 +533,9 @@ export class CompareSidebar extends React.Component<
     this.props.dispatcher.changeCommitSelection(
       this.props.repository,
       commits.map(c => c.sha),
-      isContiguous
+      isContiguous &&
+        (this.props.compareState.authorFilterText.trim().length === 0 ||
+          commits.length <= 1)
     )
 
     this.loadChangedFilesScheduler.queue(() => {
@@ -555,6 +584,18 @@ export class CompareSidebar extends React.Component<
     this.props.dispatcher.updateCompareForm(this.props.repository, {
       filterText,
     })
+  }
+
+  private onAuthorFilterChanged = (authorFilterText: string) => {
+    this.setState({ keyboardReorderData: undefined })
+    this.props.dispatcher.setHistoryAuthorFilter(
+      this.props.repository,
+      authorFilterText
+    )
+  }
+
+  private onAuthorFilterCleared = () => {
+    this.onAuthorFilterChanged('')
   }
 
   private clearFilterState = () => {

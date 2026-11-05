@@ -13,6 +13,7 @@ import {
   IRepositoryStashEntry,
   StashedChangesLoadStates,
 } from '../../../src/models/stash-entry'
+import { HistoryTabMode, ComparisonMode } from '../../../src/lib/app-state'
 
 describe('AppStore repository indicators', () => {
   let appStore: AppStore
@@ -199,6 +200,156 @@ describe('AppStore repository indicators', () => {
         .repositoryStashes,
       []
     )
+  })
+
+  it('clears hidden selections and applies the latest author filter when requests finish out of order', async t => {
+    const repository = new Repository(
+      'C:\\repositories\\author-filter',
+      20,
+      null,
+      false
+    )
+    const gitStore = appStore['gitStoreCache'].get(repository)
+    const cache = appStore['repositoryStateCache']
+    const branch = new Branch(
+      'main',
+      null,
+      { sha: 'tip' },
+      BranchType.Local,
+      'refs/heads/main'
+    )
+    t.mock.getter(gitStore, 'tip', () => ({ kind: TipState.Valid, branch }))
+    cache.updateCompareState(repository, () => ({
+      commitSHAs: ['previous'],
+      tip: 'tip',
+    }))
+    cache.updateCommitSelection(repository, () => ({
+      shas: ['previous', 'hidden'],
+      shasInDiff: ['previous', 'hidden'],
+    }))
+    let finishAlice: ((commits: string[]) => void) | undefined
+    t.mock.method(
+      gitStore,
+      'loadCommitBatch',
+      async (_ref: string, _skip: number, author: string) => {
+        if (author === 'Alice') {
+          return new Promise<string[]>(resolve => {
+            finishAlice = resolve
+          })
+        }
+        return ['bob-commit']
+      }
+    )
+    t.mock.method(appStore, '_changeCommitSelection', () => {})
+    t.mock.method(
+      appStore,
+      '_loadChangedFilesForCurrentSelection',
+      async () => {}
+    )
+
+    const aliceRequest = appStore._setHistoryAuthorFilter(repository, 'Alice')
+    assert.deepStrictEqual(cache.get(repository).commitSelection.shas, [])
+    assert.deepStrictEqual(cache.get(repository).commitSelection.shasInDiff, [])
+    await appStore._setHistoryAuthorFilter(repository, 'Bob')
+    assert.ok(finishAlice)
+    finishAlice(['alice-commit'])
+    await aliceRequest
+    assert.strictEqual(
+      cache.get(repository).compareState.authorFilterText,
+      'Bob'
+    )
+    assert.deepStrictEqual(cache.get(repository).compareState.commitSHAs, [
+      'bob-commit',
+    ])
+  })
+
+  it('preserves a pending branch comparison when the author filter changes', async t => {
+    const repository = new Repository(
+      'C:\\repositories\\author-compare',
+      22,
+      null,
+      false
+    )
+    const gitStore = appStore['gitStoreCache'].get(repository)
+    const branch = new Branch(
+      'topic',
+      null,
+      { sha: 'topic-tip' },
+      BranchType.Local,
+      'refs/heads/topic'
+    )
+    const calls = t.mock.method(gitStore, 'getCompareCommits', async () => ({
+      ahead: 3,
+      behind: 0,
+      commits: [],
+    }))
+    const pending = appStore._executeCompare(repository, {
+      kind: HistoryTabMode.Compare,
+      branch,
+      comparisonMode: ComparisonMode.Ahead,
+    })
+    await appStore._setHistoryAuthorFilter(repository, 'Alice')
+    await pending
+    assert.deepStrictEqual(calls.mock.calls[1].arguments, [
+      branch,
+      ComparisonMode.Ahead,
+      'Alice',
+    ])
+    const state = appStore['repositoryStateCache'].get(repository).compareState
+    assert.strictEqual(state.formState.kind, HistoryTabMode.Compare)
+    assert.strictEqual(state.authorFilterText, 'Alice')
+  })
+
+  it('does not append an old page after the author filter changes', async t => {
+    const repository = new Repository(
+      'C:\\repositories\\author-pages',
+      21,
+      null,
+      false
+    )
+    const gitStore = appStore['gitStoreCache'].get(repository)
+    const cache = appStore['repositoryStateCache']
+    const branch = new Branch(
+      'main',
+      null,
+      { sha: 'tip' },
+      BranchType.Local,
+      'refs/heads/main'
+    )
+    t.mock.getter(gitStore, 'tip', () => ({ kind: TipState.Valid, branch }))
+    cache.updateCompareState(repository, () => ({
+      authorFilterText: 'Alice',
+      commitSHAs: ['alice-first'],
+      formState: { kind: HistoryTabMode.History },
+    }))
+    let finishPage: ((commits: string[]) => void) | undefined
+    const load = t.mock.method(
+      gitStore,
+      'loadCommitBatch',
+      async (_ref: string, skip: number) => {
+        if (skip === 1) {
+          return new Promise<string[]>(resolve => {
+            finishPage = resolve
+          })
+        }
+        return ['bob-commit']
+      }
+    )
+    t.mock.method(appStore, '_changeCommitSelection', () => {})
+    t.mock.method(
+      appStore,
+      '_loadChangedFilesForCurrentSelection',
+      async () => {}
+    )
+    const pageRequest = appStore._loadNextCommitBatch(repository)
+    await appStore._setHistoryAuthorFilter(repository, 'Bob')
+    assert.ok(finishPage)
+    finishPage(['alice-second'])
+    await pageRequest
+    assert.deepStrictEqual(load.mock.calls[0].arguments, ['HEAD', 1, 'Alice'])
+    assert.deepStrictEqual(cache.get(repository).compareState.commitSHAs, [
+      'bob-commit',
+    ])
   })
 
   it('creates multiple stashes on the same branch without replacing earlier entries or prompting', async t => {

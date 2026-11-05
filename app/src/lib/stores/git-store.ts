@@ -40,6 +40,7 @@ import {
   getBranches,
   deleteRef,
   getCommits,
+  getAuthorFilterArgs,
   merge,
   setRemoteURL,
   getStatus,
@@ -122,6 +123,10 @@ export class GitStore extends BaseStore {
   private _history: ReadonlyArray<string> = []
 
   private readonly requestsInFight = new Set<string>()
+  private readonly commitBatchRequests = new Map<
+    string,
+    Promise<string[] | null>
+  >()
 
   private _tip: Tip = { kind: TipState.Unknown }
 
@@ -219,29 +224,47 @@ export class GitStore extends BaseStore {
   }
 
   /** Load a batch of commits from the repository, using a given commitish object as the starting point */
-  public async loadCommitBatch(commitish: string, skip: number) {
+  public async loadCommitBatch(
+    commitish: string,
+    skip: number,
+    authorFilterText: string = ''
+  ) {
     if (this.requestsInFight.has(LoadingHistoryRequestKey)) {
       return null
     }
 
-    const requestKey = `history/compare/${commitish}/skip/${skip}`
-    if (this.requestsInFight.has(requestKey)) {
-      return null
+    const requestKey = JSON.stringify([
+      'history/compare',
+      commitish,
+      skip,
+      authorFilterText,
+    ])
+    const existingRequest = this.commitBatchRequests.get(requestKey)
+    if (existingRequest !== undefined) {
+      return existingRequest
     }
 
-    this.requestsInFight.add(requestKey)
-
-    const commits = await this.performFailableOperation(() =>
-      getCommits(this.repository, commitish, CommitBatchSize, skip)
+    const request = this.performFailableOperation(() =>
+      getCommits(
+        this.repository,
+        commitish,
+        CommitBatchSize,
+        skip,
+        getAuthorFilterArgs(authorFilterText)
+      )
     )
-
-    this.requestsInFight.delete(requestKey)
-    if (!commits) {
-      return null
-    }
-
-    this.storeCommits(commits)
-    return commits.map(c => c.sha)
+      .then(commits => {
+        if (commits === undefined) {
+          return null
+        }
+        this.storeCommits(commits)
+        return commits.map(c => c.sha)
+      })
+      .finally(() => {
+        this.commitBatchRequests.delete(requestKey)
+      })
+    this.commitBatchRequests.set(requestKey, request)
+    return request
   }
 
   public async refreshTags() {
@@ -1715,7 +1738,8 @@ export class GitStore extends BaseStore {
    */
   public async getCompareCommits(
     branch: Branch,
-    comparisonMode: ComparisonMode
+    comparisonMode: ComparisonMode,
+    authorFilterText: string = ''
   ): Promise<ICompareResult | null> {
     if (this.tip.kind !== TipState.Valid) {
       return null
@@ -1742,7 +1766,9 @@ export class GitStore extends BaseStore {
     const commits = await getCommits(
       this.repository,
       revisionRange,
-      commitsToLoad
+      commitsToLoad,
+      undefined,
+      getAuthorFilterArgs(authorFilterText)
     )
 
     if (commits.length > 0) {

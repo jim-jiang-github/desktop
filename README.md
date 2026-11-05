@@ -88,6 +88,33 @@ If you're looking for something to work on, check out the [help wanted](https://
 
 To setup your development environment for building Desktop, check out: [`setup.md`](./docs/contributing/setup.md).
 
+## Reverting a single file from a commit
+
+In **History**, select one commit, right-click a changed file, and choose
+**Revert changes to this file**. After confirmation, the inverse of that
+commit's changes to the file appears in **Changes** for review and manual
+commit. Later edits are preserved where possible; overlapping edits may
+produce conflicts that must be resolved before committing.
+
+Commit or stash local changes to the affected file first. Other files' local
+changes are left untouched. Merge commits are reverted relative to their first
+parent. This does not restore the entire file to an old version or create a
+commit automatically.
+
+## Filtering commits by author
+
+In **History**, use **Filter by author name or email** below the branch
+comparison field to search the current branch's entire history. The search is
+case-insensitive and treats names and email addresses as literal text. It also
+applies to the Ahead and Behind lists when comparing branches. Clear the field
+to show all authors again.
+
+The filter matches the commit's Git author, not its committer or
+`Co-authored-by` trailers. Matching commits can still be multi-selected and
+cherry-picked; check for dependencies on other authors' commits before applying
+them to another branch. Reordering, squashing, undoing, and amending are disabled
+while an author filter is active.
+
 ## More Resources
 
 See [desktop.github.com](https://desktop.github.com) for more product-oriented

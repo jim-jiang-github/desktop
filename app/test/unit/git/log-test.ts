@@ -1,12 +1,198 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
 import { Repository } from '../../../src/models/repository'
-import { getChangedFiles, getCommits } from '../../../src/lib/git'
-import { setupFixtureRepository } from '../../helpers/repositories'
+import {
+  getChangedFiles,
+  getCommits,
+  getAuthorFilterArgs,
+  git,
+} from '../../../src/lib/git'
+import {
+  setupEmptyRepository,
+  setupFixtureRepository,
+} from '../../helpers/repositories'
 import { AppFileStatusKind } from '../../../src/models/status'
 import { setupLocalConfig } from '../../helpers/local-config'
 
 describe('git/log', () => {
+  describe('author filtering', () => {
+    it('matches author names and emails case-insensitively and paginates matching commits', async t => {
+      const repository = await setupEmptyRepository(t)
+      for (const [author, message] of [
+        ['Alice Example <alice+dev@example.com>', 'alice first'],
+        ['Bob Example <bob@example.com>', 'bob first'],
+        ['Alice Example <alice+dev@example.com>', 'alice second'],
+        ['Bob Example <bob@example.com>', 'bob second'],
+        ['Alice Example <alice+dev@example.com>', 'alice third'],
+      ]) {
+        await git(
+          ['commit', '--allow-empty', `--author=${author}`, '-m', message],
+          repository.path,
+          'test'
+        )
+      }
+      const firstPage = await getCommits(
+        repository,
+        'HEAD',
+        2,
+        0,
+        getAuthorFilterArgs('ALICE')
+      )
+      const secondPage = await getCommits(
+        repository,
+        'HEAD',
+        2,
+        2,
+        getAuthorFilterArgs('alice+dev@example.com')
+      )
+      assert.deepStrictEqual(
+        firstPage.map(commit => commit.summary),
+        ['alice third', 'alice second']
+      )
+      assert.deepStrictEqual(
+        secondPage.map(commit => commit.summary),
+        ['alice first']
+      )
+      assert.ok(
+        firstPage.every(
+          commit => commit.author.email === 'alice+dev@example.com'
+        )
+      )
+
+      assert.strictEqual(
+        (
+          await getCommits(
+            repository,
+            'HEAD',
+            10,
+            0,
+            getAuthorFilterArgs('missing')
+          )
+        ).length,
+        0
+      )
+      assert.strictEqual(
+        (await getCommits(repository, 'HEAD', 10, 0, getAuthorFilterArgs('  ')))
+          .length,
+        5
+      )
+    })
+
+    it('treats regular expression characters and leading dashes as literal text', async t => {
+      const repository = await setupEmptyRepository(t)
+      for (const author of [
+        'A.*[team](dev) <a+dev@example.com>',
+        'A-other-team <aXdev@exampleXcom>',
+        '-Dash <dash@example.com>',
+      ]) {
+        await git(
+          ['commit', '--allow-empty', `--author=${author}`, '-m', author],
+          repository.path,
+          'test'
+        )
+      }
+      for (const query of ['A.*[team](dev)', 'a+dev@example.com', '-Dash']) {
+        const commits = await getCommits(
+          repository,
+          'HEAD',
+          10,
+          0,
+          getAuthorFilterArgs(query)
+        )
+        assert.strictEqual(commits.length, 1)
+        assert.ok(commits[0].summary.includes(query))
+      }
+    })
+
+    it('filters by the author rather than the committer or co-author trailers', async t => {
+      const repository = await setupEmptyRepository(t)
+      await git(
+        [
+          'commit',
+          '--allow-empty',
+          '--author=Alice <alice@example.com>',
+          '-m',
+          'Shared work\n\nCo-authored-by: Bob <bob@example.com>',
+        ],
+        repository.path,
+        'test'
+      )
+      assert.strictEqual(
+        (
+          await getCommits(
+            repository,
+            'HEAD',
+            10,
+            0,
+            getAuthorFilterArgs('Bob')
+          )
+        ).length,
+        0
+      )
+      assert.strictEqual(
+        (
+          await getCommits(
+            repository,
+            'HEAD',
+            10,
+            0,
+            getAuthorFilterArgs('alice')
+          )
+        ).length,
+        1
+      )
+    })
+
+    it('preserves revision range boundaries when filtering comparisons', async t => {
+      const repository = await setupEmptyRepository(t)
+      await git(
+        [
+          'commit',
+          '--allow-empty',
+          '--author=Alice <alice@example.com>',
+          '-m',
+          'before range',
+        ],
+        repository.path,
+        'test'
+      )
+      const [base] = await getCommits(repository, 'HEAD', 1)
+      await git(
+        [
+          'commit',
+          '--allow-empty',
+          '--author=Bob <bob@example.com>',
+          '-m',
+          'bob in range',
+        ],
+        repository.path,
+        'test'
+      )
+      await git(
+        [
+          'commit',
+          '--allow-empty',
+          '--author=Alice <alice@example.com>',
+          '-m',
+          'alice in range',
+        ],
+        repository.path,
+        'test'
+      )
+      const commits = await getCommits(
+        repository,
+        `${base.sha}..HEAD`,
+        10,
+        0,
+        getAuthorFilterArgs('Alice')
+      )
+      assert.deepStrictEqual(
+        commits.map(commit => commit.summary),
+        ['alice in range']
+      )
+    })
+  })
+
   describe('getCommits', () => {
     it('loads history', async t => {
       const testRepoPath = await setupFixtureRepository(
