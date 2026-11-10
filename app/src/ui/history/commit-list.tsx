@@ -311,7 +311,6 @@ export class CommitList extends React.Component<
         onRemoveDragElement={this.props.onRemoveCommitDragElement}
         disableSquashing={this.props.disableSquashing}
         accounts={this.props.accounts}
-        preferAbsoluteDates={this.props.preferAbsoluteDates}
       />
     )
   }

@@ -101,19 +101,20 @@ changes are left untouched. Merge commits are reverted relative to their first
 parent. This does not restore the entire file to an old version or create a
 commit automatically.
 
-## Filtering commits by author
+## Searching commits by author or title
 
-In **History**, use **Filter by author name or email** below the branch
+In **History**, use **Search by author name, email, or title** below the branch
 comparison field to search the current branch's entire history. The search is
-case-insensitive and treats names and email addresses as literal text. It also
-applies to the Ahead and Behind lists when comparing branches. Clear the field
-to show all authors again.
+case-insensitive and treats the query as literal text. It also applies to the
+Ahead and Behind lists when comparing branches. Clear the field to show all
+commits again.
 
-The filter matches the commit's Git author, not its committer or
-`Co-authored-by` trailers. Matching commits can still be multi-selected and
+The search matches the commit title or Git author name/email, not the committer
+or `Co-authored-by` trailers. Matching commits can still be multi-selected and
 cherry-picked; check for dependencies on other authors' commits before applying
 them to another branch. Reordering, squashing, undoing, and amending are disabled
-while an author filter is active.
+while a search is active. History entries show the exact author date and time
+using the configured date and time formats.
 
 ## More Resources
 

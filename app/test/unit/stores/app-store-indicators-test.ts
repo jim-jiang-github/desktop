@@ -247,15 +247,15 @@ describe('AppStore repository indicators', () => {
       async () => {}
     )
 
-    const aliceRequest = appStore._setHistoryAuthorFilter(repository, 'Alice')
+    const aliceRequest = appStore._setHistorySearchText(repository, 'Alice')
     assert.deepStrictEqual(cache.get(repository).commitSelection.shas, [])
     assert.deepStrictEqual(cache.get(repository).commitSelection.shasInDiff, [])
-    await appStore._setHistoryAuthorFilter(repository, 'Bob')
+    await appStore._setHistorySearchText(repository, 'Bob')
     assert.ok(finishAlice)
     finishAlice(['alice-commit'])
     await aliceRequest
     assert.strictEqual(
-      cache.get(repository).compareState.authorFilterText,
+      cache.get(repository).compareState.historySearchText,
       'Bob'
     )
     assert.deepStrictEqual(cache.get(repository).compareState.commitSHAs, [
@@ -288,7 +288,7 @@ describe('AppStore repository indicators', () => {
       branch,
       comparisonMode: ComparisonMode.Ahead,
     })
-    await appStore._setHistoryAuthorFilter(repository, 'Alice')
+    await appStore._setHistorySearchText(repository, 'Alice')
     await pending
     assert.deepStrictEqual(calls.mock.calls[1].arguments, [
       branch,
@@ -297,7 +297,7 @@ describe('AppStore repository indicators', () => {
     ])
     const state = appStore['repositoryStateCache'].get(repository).compareState
     assert.strictEqual(state.formState.kind, HistoryTabMode.Compare)
-    assert.strictEqual(state.authorFilterText, 'Alice')
+    assert.strictEqual(state.historySearchText, 'Alice')
   })
 
   it('does not append an old page after the author filter changes', async t => {
@@ -318,7 +318,7 @@ describe('AppStore repository indicators', () => {
     )
     t.mock.getter(gitStore, 'tip', () => ({ kind: TipState.Valid, branch }))
     cache.updateCompareState(repository, () => ({
-      authorFilterText: 'Alice',
+      historySearchText: 'Alice',
       commitSHAs: ['alice-first'],
       formState: { kind: HistoryTabMode.History },
     }))
@@ -342,7 +342,7 @@ describe('AppStore repository indicators', () => {
       async () => {}
     )
     const pageRequest = appStore._loadNextCommitBatch(repository)
-    await appStore._setHistoryAuthorFilter(repository, 'Bob')
+    await appStore._setHistorySearchText(repository, 'Bob')
     assert.ok(finishPage)
     finishPage(['alice-second'])
     await pageRequest

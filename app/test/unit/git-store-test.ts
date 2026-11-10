@@ -17,7 +17,7 @@ import {
   getCommit,
   getCommits,
   getRemotes,
-  getAuthorFilterArgs,
+  matchesCommitSearch,
   git,
 } from '../../src/lib/git'
 import { ComparisonMode } from '../../src/lib/app-state'
@@ -33,7 +33,7 @@ import { isolateGitConfig } from '../helpers/git-config'
 
 describe('GitStore', () => {
   describe('loadCommitBatch', () => {
-    it('loads filtered history beyond the first page and shares overlapping requests', async t => {
+    it('searches history beyond the first page and shares overlapping requests', async t => {
       const path = await setupFixtureRepository(
         t,
         'repository-with-105-commits'
@@ -42,13 +42,7 @@ describe('GitStore', () => {
       const gitStore = new GitStore(repo, shell, new TestStatsStore())
       const all = await getCommits(repo, 'HEAD')
       const query = all[0].author.email
-      const expected = await getCommits(
-        repo,
-        'HEAD',
-        undefined,
-        undefined,
-        getAuthorFilterArgs(query)
-      )
+      const expected = all.filter(commit => matchesCommitSearch(commit, query))
       assert.ok(expected.length > 100)
       const [first, duplicate] = await Promise.all([
         gitStore.loadCommitBatch('HEAD', 0, query),
@@ -93,7 +87,7 @@ describe('GitStore', () => {
           '--allow-empty',
           '--author=Bob <bob@example.com>',
           '-m',
-          'bob ahead',
+          'target title ahead',
         ],
         repo.path,
         'test'
@@ -106,13 +100,22 @@ describe('GitStore', () => {
       const compare = await gitStore.getCompareCommits(
         topic,
         ComparisonMode.Ahead,
-        'Alice'
+        'target title'
       )
       assert.ok(compare)
       assert.strictEqual(compare.ahead, 2)
       assert.strictEqual(compare.behind, 0)
       assert.deepStrictEqual(
         compare.commits.map(c => c.summary),
+        ['target title ahead']
+      )
+      const authorCompare = await gitStore.getCompareCommits(
+        topic,
+        ComparisonMode.Ahead,
+        'Alice'
+      )
+      assert.deepStrictEqual(
+        authorCompare?.commits.map(c => c.summary),
         ['alice ahead']
       )
     })

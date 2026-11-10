@@ -18,7 +18,7 @@ const repository = new Repository(__dirname, 1, null, false)
 const originalResizeObserver = window.ResizeObserver
 
 function createProps(
-  authorFilterText = ''
+  historySearchText = ''
 ): React.ComponentProps<typeof CompareSidebar> {
   const compareState = new RepositoryStateCache(new TestStatsStore()).get(
     repository
@@ -26,14 +26,14 @@ function createProps(
   const dispatcher = {
     initializeCompare: mock.fn(),
     updateCompareForm: mock.fn(),
-    setHistoryAuthorFilter: mock.fn(),
+    setHistorySearchText: mock.fn(),
     changeCommitSelection: mock.fn(),
     loadChangedFilesForCurrentSelection: mock.fn(),
   } as unknown as Dispatcher
   return {
     repository,
     isLocalRepository: true,
-    compareState: { ...compareState, authorFilterText },
+    compareState: { ...compareState, historySearchText },
     emoji: new Map(),
     commitLookup: new Map(),
     localCommitSHAs: [],
@@ -63,27 +63,27 @@ afterEach(() => {
   mock.restoreAll()
 })
 
-describe('History author filter', () => {
-  it('adds a separate author field while preserving branch comparison', () => {
+describe('History search', () => {
+  it('adds a separate author or title field while preserving branch comparison', () => {
     const props = createProps()
-    const setFilter = mock.method(props.dispatcher, 'setHistoryAuthorFilter')
+    const setFilter = mock.method(props.dispatcher, 'setHistorySearchText')
     render(<CompareSidebar {...props} />)
     assert.ok(screen.getByRole('textbox', { name: 'Branch filter' }))
     const input = screen.getByRole('searchbox', {
-      name: 'Filter commits by author',
+      name: 'Search commits by author or title',
     })
-    fireEvent.change(input, { target: { value: 'alice@example.com' } })
+    fireEvent.change(input, { target: { value: 'release fix' } })
     assert.deepStrictEqual(setFilter.mock.calls[0].arguments, [
       repository,
-      'alice@example.com',
+      'release fix',
     ])
   })
 
   it('clears the filter and displays an explicit empty result', () => {
     const props = createProps('Alice')
-    const setFilter = mock.method(props.dispatcher, 'setHistoryAuthorFilter')
+    const setFilter = mock.method(props.dispatcher, 'setHistorySearchText')
     render(<CompareSidebar {...props} />)
-    assert.ok(screen.getByText('No commits match this author'))
+    assert.ok(screen.getByText('No commits match this search'))
     fireEvent.click(screen.getByRole('button', { name: /clear/i }))
     assert.ok(setFilter.mock.calls.some(call => call.arguments[1] === ''))
   })
@@ -148,7 +148,7 @@ describe('History author filter', () => {
       />
     )
     const input = screen.getByRole('searchbox', {
-      name: 'Filter commits by author',
+      name: 'Search commits by author or title',
     })
     assert.ok(input instanceof HTMLInputElement)
     assert.strictEqual(input.value, 'Alice')

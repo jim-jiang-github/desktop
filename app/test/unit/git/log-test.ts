@@ -4,7 +4,7 @@ import { Repository } from '../../../src/models/repository'
 import {
   getChangedFiles,
   getCommits,
-  getAuthorFilterArgs,
+  matchesCommitSearch,
   git,
 } from '../../../src/lib/git'
 import {
@@ -15,66 +15,48 @@ import { AppFileStatusKind } from '../../../src/models/status'
 import { setupLocalConfig } from '../../helpers/local-config'
 
 describe('git/log', () => {
-  describe('author filtering', () => {
-    it('matches author names and emails case-insensitively and paginates matching commits', async t => {
+  describe('commit search', () => {
+    it('matches author names, emails, and titles case-insensitively', async t => {
       const repository = await setupEmptyRepository(t)
-      for (const [author, message] of [
-        ['Alice Example <alice+dev@example.com>', 'alice first'],
-        ['Bob Example <bob@example.com>', 'bob first'],
-        ['Alice Example <alice+dev@example.com>', 'alice second'],
-        ['Bob Example <bob@example.com>', 'bob second'],
-        ['Alice Example <alice+dev@example.com>', 'alice third'],
+      for (const [author, title] of [
+        ['Alice Example <alice+dev@example.com>', 'Add release feature'],
+        ['Bob Example <bob@example.com>', 'Fix release pipeline'],
+        ['Carol Example <carol@example.com>', 'Update dependencies'],
       ]) {
         await git(
-          ['commit', '--allow-empty', `--author=${author}`, '-m', message],
+          ['commit', '--allow-empty', `--author=${author}`, '-m', title],
           repository.path,
           'test'
         )
       }
-      const firstPage = await getCommits(
-        repository,
-        'HEAD',
-        2,
-        0,
-        getAuthorFilterArgs('ALICE')
+      const commits = await getCommits(repository, 'HEAD')
+      const authorMatches = commits.filter(commit =>
+        matchesCommitSearch(commit, 'ALICE')
       )
-      const secondPage = await getCommits(
-        repository,
-        'HEAD',
-        2,
-        2,
-        getAuthorFilterArgs('alice+dev@example.com')
+      const titleMatches = commits.filter(commit =>
+        matchesCommitSearch(commit, 'RELEASE')
       )
       assert.deepStrictEqual(
-        firstPage.map(commit => commit.summary),
-        ['alice third', 'alice second']
+        authorMatches.map(commit => commit.summary),
+        ['Add release feature']
       )
       assert.deepStrictEqual(
-        secondPage.map(commit => commit.summary),
-        ['alice first']
+        titleMatches.map(commit => commit.summary),
+        ['Fix release pipeline', 'Add release feature']
       )
-      assert.ok(
-        firstPage.every(
-          commit => commit.author.email === 'alice+dev@example.com'
-        )
-      )
-
       assert.strictEqual(
-        (
-          await getCommits(
-            repository,
-            'HEAD',
-            10,
-            0,
-            getAuthorFilterArgs('missing')
-          )
+        commits.filter(commit =>
+          matchesCommitSearch(commit, 'alice+dev@example.com')
         ).length,
+        1
+      )
+      assert.strictEqual(
+        commits.filter(commit => matchesCommitSearch(commit, 'missing')).length,
         0
       )
       assert.strictEqual(
-        (await getCommits(repository, 'HEAD', 10, 0, getAuthorFilterArgs('  ')))
-          .length,
-        5
+        commits.filter(c => matchesCommitSearch(c, '  ')).length,
+        3
       )
     })
 
@@ -91,20 +73,16 @@ describe('git/log', () => {
           'test'
         )
       }
+      const commits = await getCommits(repository, 'HEAD')
       for (const query of ['A.*[team](dev)', 'a+dev@example.com', '-Dash']) {
-        const commits = await getCommits(
-          repository,
-          'HEAD',
-          10,
-          0,
-          getAuthorFilterArgs(query)
+        assert.strictEqual(
+          commits.filter(commit => matchesCommitSearch(commit, query)).length,
+          1
         )
-        assert.strictEqual(commits.length, 1)
-        assert.ok(commits[0].summary.includes(query))
       }
     })
 
-    it('filters by the author rather than the committer or co-author trailers', async t => {
+    it('searches author and title but not committer or co-author trailers', async t => {
       const repository = await setupEmptyRepository(t)
       await git(
         [
@@ -117,33 +95,12 @@ describe('git/log', () => {
         repository.path,
         'test'
       )
-      assert.strictEqual(
-        (
-          await getCommits(
-            repository,
-            'HEAD',
-            10,
-            0,
-            getAuthorFilterArgs('Bob')
-          )
-        ).length,
-        0
-      )
-      assert.strictEqual(
-        (
-          await getCommits(
-            repository,
-            'HEAD',
-            10,
-            0,
-            getAuthorFilterArgs('alice')
-          )
-        ).length,
-        1
-      )
+      const [commit] = await getCommits(repository, 'HEAD')
+      assert.strictEqual(matchesCommitSearch(commit, 'Bob'), false)
+      assert.strictEqual(matchesCommitSearch(commit, 'alice'), true)
     })
 
-    it('preserves revision range boundaries when filtering comparisons', async t => {
+    it('preserves revision range boundaries while searching comparisons', async t => {
       const repository = await setupEmptyRepository(t)
       await git(
         [
@@ -179,13 +136,9 @@ describe('git/log', () => {
         repository.path,
         'test'
       )
-      const commits = await getCommits(
-        repository,
-        `${base.sha}..HEAD`,
-        10,
-        0,
-        getAuthorFilterArgs('Alice')
-      )
+      const commits = (
+        await getCommits(repository, `${base.sha}..HEAD`)
+      ).filter(commit => matchesCommitSearch(commit, 'Alice'))
       assert.deepStrictEqual(
         commits.map(commit => commit.summary),
         ['alice in range']

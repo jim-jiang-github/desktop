@@ -250,12 +250,12 @@ export class Dispatcher {
     return this.appStore._loadNextCommitBatch(repository)
   }
 
-  /** Filter history and comparison commits by their author name or email. */
-  public setHistoryAuthorFilter(
+  /** Search history and comparison commits by author or title. */
+  public setHistorySearchText(
     repository: Repository,
-    authorFilterText: string
+    historySearchText: string
   ): Promise<void> {
-    return this.appStore._setHistoryAuthorFilter(repository, authorFilterText)
+    return this.appStore._setHistorySearchText(repository, historySearchText)
   }
 
   /** Load the changed files for the current history selection. */

@@ -20,16 +20,18 @@ import assert from 'assert'
 // https://github.com/git/git/blob/v2.37.3/cache.h#L62-L69
 const SubmoduleFileMode = '160000'
 
-/** Git log arguments for a case-insensitive, literal author name or email search. */
-export function getAuthorFilterArgs(filterText: string): ReadonlyArray<string> {
-  const text = filterText.trim()
-  return text.length === 0
-    ? []
-    : [
-        '--extended-regexp',
-        '--regexp-ignore-case',
-        `--author=${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
-      ]
+/** Checks whether a commit matches a case-insensitive author or title search. */
+export function matchesCommitSearch(
+  commit: Commit,
+  searchText: string
+): boolean {
+  const query = searchText.trim().toLowerCase()
+  return (
+    query.length === 0 ||
+    commit.author.name.toLowerCase().includes(query) ||
+    commit.author.email.toLowerCase().includes(query) ||
+    commit.summary.toLowerCase().includes(query)
+  )
 }
 
 function mapSubmoduleStatusFileModes(

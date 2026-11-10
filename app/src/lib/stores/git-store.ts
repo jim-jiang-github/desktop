@@ -40,7 +40,7 @@ import {
   getBranches,
   deleteRef,
   getCommits,
-  getAuthorFilterArgs,
+  matchesCommitSearch,
   merge,
   setRemoteURL,
   getStatus,
@@ -113,6 +113,13 @@ const LoadingHistoryRequestKey = 'history'
 /** The max number of recent branches to find. */
 const RecentBranchesLimit = 5
 
+interface IHistorySearchCache {
+  readonly commits: Array<string>
+  scannedCount: number
+  isComplete: boolean
+  inFlight: Promise<boolean> | null
+}
+
 /** The store for a repository's git data. */
 export class GitStore extends BaseStore {
   /** The commits keyed by their SHA. */
@@ -127,6 +134,7 @@ export class GitStore extends BaseStore {
     string,
     Promise<string[] | null>
   >()
+  private readonly historySearchCache = new Map<string, IHistorySearchCache>()
 
   private _tip: Tip = { kind: TipState.Unknown }
 
@@ -227,31 +235,37 @@ export class GitStore extends BaseStore {
   public async loadCommitBatch(
     commitish: string,
     skip: number,
-    authorFilterText: string = ''
+    historySearchText: string = ''
   ) {
     if (this.requestsInFight.has(LoadingHistoryRequestKey)) {
       return null
     }
 
+    const searchText = historySearchText.trim()
+    const tipSha =
+      this.tip.kind === TipState.Valid
+        ? this.tip.branch.tip.sha
+        : this.tip.kind === TipState.Detached
+        ? this.tip.currentSha
+        : ''
     const requestKey = JSON.stringify([
       'history/compare',
       commitish,
       skip,
-      authorFilterText,
+      searchText,
+      tipSha,
     ])
     const existingRequest = this.commitBatchRequests.get(requestKey)
     if (existingRequest !== undefined) {
       return existingRequest
     }
 
-    const request = this.performFailableOperation(() =>
-      getCommits(
-        this.repository,
-        commitish,
-        CommitBatchSize,
-        skip,
-        getAuthorFilterArgs(authorFilterText)
-      )
+    const request = (
+      searchText.length === 0
+        ? this.performFailableOperation(() =>
+            getCommits(this.repository, commitish, CommitBatchSize, skip)
+          )
+        : this.loadFilteredCommitBatch(commitish, skip, searchText, tipSha)
     )
       .then(commits => {
         if (commits === undefined) {
@@ -265,6 +279,73 @@ export class GitStore extends BaseStore {
       })
     this.commitBatchRequests.set(requestKey, request)
     return request
+  }
+
+  private async loadFilteredCommitBatch(
+    commitish: string,
+    skip: number,
+    searchText: string,
+    tipSha: string
+  ): Promise<ReadonlyArray<Commit> | undefined> {
+    const cacheKey = JSON.stringify([commitish, tipSha, searchText])
+    let cache = this.historySearchCache.get(cacheKey)
+    if (cache === undefined) {
+      this.historySearchCache.clear()
+      cache = {
+        commits: [],
+        scannedCount: 0,
+        isComplete: false,
+        inFlight: null,
+      }
+      this.historySearchCache.set(cacheKey, cache)
+    }
+
+    const neededCount = skip + CommitBatchSize
+    while (cache.commits.length < neededCount && !cache.isComplete) {
+      if (cache.inFlight !== null) {
+        if (!(await cache.inFlight)) {
+          return undefined
+        }
+        continue
+      }
+
+      const request = this.performFailableOperation(() =>
+        getCommits(
+          this.repository,
+          commitish,
+          CommitBatchSize,
+          cache.scannedCount
+        )
+      )
+        .then(commits => {
+          if (commits === undefined) {
+            return false
+          }
+
+          this.storeCommits(commits)
+          cache.scannedCount += commits.length
+          cache.commits.push(
+            ...commits
+              .filter(commit => matchesCommitSearch(commit, searchText))
+              .map(commit => commit.sha)
+          )
+          cache.isComplete = commits.length < CommitBatchSize
+          return true
+        })
+        .finally(() => {
+          cache.inFlight = null
+        })
+
+      cache.inFlight = request
+      if (!(await request)) {
+        return undefined
+      }
+    }
+
+    return cache.commits.slice(skip, neededCount).flatMap(sha => {
+      const commit = this.commitLookup.get(sha)
+      return commit === undefined ? [] : [commit]
+    })
   }
 
   public async refreshTags() {
@@ -1739,7 +1820,7 @@ export class GitStore extends BaseStore {
   public async getCompareCommits(
     branch: Branch,
     comparisonMode: ComparisonMode,
-    authorFilterText: string = ''
+    historySearchText: string = ''
   ): Promise<ICompareResult | null> {
     if (this.tip.kind !== TipState.Valid) {
       return null
@@ -1763,13 +1844,9 @@ export class GitStore extends BaseStore {
       comparisonMode === ComparisonMode.Ahead
         ? aheadBehind.ahead
         : aheadBehind.behind
-    const commits = await getCommits(
-      this.repository,
-      revisionRange,
-      commitsToLoad,
-      undefined,
-      getAuthorFilterArgs(authorFilterText)
-    )
+    const commits = (
+      await getCommits(this.repository, revisionRange, commitsToLoad)
+    ).filter(commit => matchesCommitSearch(commit, historySearchText))
 
     if (commits.length > 0) {
       this.storeCommits(commits)

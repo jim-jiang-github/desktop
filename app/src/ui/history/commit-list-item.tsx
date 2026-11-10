@@ -9,7 +9,6 @@ import { Commit } from '../../models/commit'
 import { GitHubRepository } from '../../models/github-repository'
 import { IAvatarUser, getAvatarUsersForCommit } from '../../models/avatar'
 import { RichText } from '../lib/rich-text'
-import { RelativeTime } from '../relative-time'
 import { CommitAttribution } from '../lib/commit-attribution'
 import { AvatarStack } from '../lib/avatar-stack'
 import { Octicon } from '../octicons'
@@ -49,7 +48,7 @@ interface ICommitProps {
   readonly disableSquashing?: boolean
   readonly unpushedIndicatorTitle?: string
   readonly accounts: ReadonlyArray<Account>
-  readonly preferAbsoluteDates: boolean
+  readonly preferAbsoluteDates?: boolean
 }
 
 interface ICommitListItemState {
@@ -167,7 +166,7 @@ export class CommitListItem extends React.PureComponent<
               />
               <div className="byline">
                 <CommitAttribution avatarUsers={this.state.avatarUsers} />
-                {renderRelativeTime(date, this.props.preferAbsoluteDates)}
+                {renderCommitDate(date)}
               </div>
             </div>
           </div>
@@ -235,15 +234,11 @@ export class CommitListItem extends React.PureComponent<
   }
 }
 
-function renderRelativeTime(date: Date, preferAbsoluteDates: boolean) {
+function renderCommitDate(date: Date) {
   return (
     <>
       {` • `}
-      {preferAbsoluteDates ? (
-        formatDate(date)
-      ) : (
-        <RelativeTime date={date} tooltip={!enableAccessibleListToolTips()} />
-      )}
+      {formatDate(date, { dateStyle: 'medium', timeStyle: 'medium' })}
     </>
   )
 }

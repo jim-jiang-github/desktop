@@ -184,14 +184,14 @@ export class CompareSidebar extends React.Component<
 
         <div className="history-author-filter">
           <TextBox
-            ariaLabel="Filter commits by author"
-            placeholder="Filter by author name or email"
+            ariaLabel="Search commits by author or title"
+            placeholder="Search by author name, email, or title"
             prefixedIcon={octicons.person}
             type="search"
             displayClearButton={true}
-            value={this.props.compareState.authorFilterText}
-            onValueChanged={this.onAuthorFilterChanged}
-            onSearchCleared={this.onAuthorFilterCleared}
+            value={this.props.compareState.historySearchText}
+            onValueChanged={this.onHistorySearchChanged}
+            onSearchCleared={this.onHistorySearchCleared}
             disabled={this.props.isMultiCommitOperationInProgress === true}
           />
         </div>
@@ -231,12 +231,12 @@ export class CompareSidebar extends React.Component<
   }
 
   private renderCommitList() {
-    const { formState, commitSHAs, authorFilterText } = this.props.compareState
-    const isAuthorFiltered = authorFilterText.trim().length > 0
+    const { formState, commitSHAs, historySearchText } = this.props.compareState
+    const isHistorySearchActive = historySearchText.trim().length > 0
 
     let emptyListMessage: string | JSX.Element
-    if (isAuthorFiltered) {
-      emptyListMessage = 'No commits match this author'
+    if (isHistorySearchActive) {
+      emptyListMessage = 'No commits match this search'
     } else if (formState.kind === HistoryTabMode.History) {
       emptyListMessage = 'No history'
     } else {
@@ -268,14 +268,14 @@ export class CompareSidebar extends React.Component<
         localCommitSHAs={this.props.localCommitSHAs}
         canResetToCommits={formState.kind === HistoryTabMode.History}
         canUndoCommits={
-          formState.kind === HistoryTabMode.History && !isAuthorFiltered
+          formState.kind === HistoryTabMode.History && !isHistorySearchActive
         }
         canAmendCommits={
-          formState.kind === HistoryTabMode.History && !isAuthorFiltered
+          formState.kind === HistoryTabMode.History && !isHistorySearchActive
         }
         emoji={this.props.emoji}
         reorderingEnabled={
-          formState.kind === HistoryTabMode.History && !isAuthorFiltered
+          formState.kind === HistoryTabMode.History && !isHistorySearchActive
         }
         onViewCommitOnGitHub={this.props.onViewCommitOnGitHub}
         onUndoCommit={this.onUndoCommit}
@@ -304,10 +304,10 @@ export class CompareSidebar extends React.Component<
         onRenderCommitDragElement={this.onRenderCommitDragElement}
         onRemoveCommitDragElement={this.onRemoveCommitDragElement}
         disableReordering={
-          formState.kind === HistoryTabMode.Compare || isAuthorFiltered
+          formState.kind === HistoryTabMode.Compare || isHistorySearchActive
         }
         disableSquashing={
-          formState.kind === HistoryTabMode.Compare || isAuthorFiltered
+          formState.kind === HistoryTabMode.Compare || isHistorySearchActive
         }
         isMultiCommitOperationInProgress={
           this.props.isMultiCommitOperationInProgress
@@ -534,7 +534,7 @@ export class CompareSidebar extends React.Component<
       this.props.repository,
       commits.map(c => c.sha),
       isContiguous &&
-        (this.props.compareState.authorFilterText.trim().length === 0 ||
+        (this.props.compareState.historySearchText.trim().length === 0 ||
           commits.length <= 1)
     )
 
@@ -586,16 +586,16 @@ export class CompareSidebar extends React.Component<
     })
   }
 
-  private onAuthorFilterChanged = (authorFilterText: string) => {
+  private onHistorySearchChanged = (historySearchText: string) => {
     this.setState({ keyboardReorderData: undefined })
-    this.props.dispatcher.setHistoryAuthorFilter(
+    this.props.dispatcher.setHistorySearchText(
       this.props.repository,
-      authorFilterText
+      historySearchText
     )
   }
 
-  private onAuthorFilterCleared = () => {
-    this.onAuthorFilterChanged('')
+  private onHistorySearchCleared = () => {
+    this.onHistorySearchChanged('')
   }
 
   private clearFilterState = () => {
