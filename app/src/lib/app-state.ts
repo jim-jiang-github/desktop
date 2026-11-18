@@ -920,6 +920,7 @@ export enum HistoryTabMode {
 export enum ComparisonMode {
   Ahead = 'Ahead',
   Behind = 'Behind',
+  Graph = 'Graph',
 }
 
 /**
@@ -938,10 +939,13 @@ export interface ICompareBranch {
   readonly kind: HistoryTabMode.Compare
 
   /** The chosen comparison mode determines which commits to show */
-  readonly comparisonMode: ComparisonMode.Ahead | ComparisonMode.Behind
+  readonly comparisonMode: ComparisonMode
 
   /** The branch to compare against the base branch */
   readonly comparisonBranch: Branch
+
+  /** The shared commit shown in a branch comparison diagram, if any. */
+  readonly mergeBase?: string | null
 
   /** The number of commits the selected branch is ahead/behind the current branch */
   readonly aheadBehind: IAheadBehind
@@ -1017,7 +1021,7 @@ export interface IViewHistory {
 export interface ICompareToBranch {
   readonly kind: HistoryTabMode.Compare
   readonly branch: Branch
-  readonly comparisonMode: ComparisonMode.Ahead | ComparisonMode.Behind
+  readonly comparisonMode: ComparisonMode
 }
 
 /**

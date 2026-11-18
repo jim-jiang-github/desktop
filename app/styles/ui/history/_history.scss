@@ -85,6 +85,245 @@
     min-height: 0;
   }
 
+  .branch-comparison-graph {
+    --branch-graph-inset: 16px;
+    --branch-graph-row-height: 28px;
+    --branch-graph-color: var(--text-secondary-color);
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+
+    @each $index, $color in (0: #539bf5, 1: #b083f0) {
+      .branch-graph-color-#{$index} {
+        --branch-graph-color: #{$color};
+      }
+    }
+
+    .branch-graph-relationship {
+      padding: var(--spacing-half) var(--spacing);
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+    }
+
+    .branch-comparison-legend,
+    .branch-comparison-diagram {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .branch-comparison-legend {
+      border-bottom: var(--base-border);
+      font-size: var(--font-size-sm);
+
+      span {
+        @include ellipsis;
+        margin: var(--spacing-half) var(--spacing);
+        padding-left: var(--spacing-half);
+        border-left: 3px solid var(--branch-graph-color);
+      }
+    }
+
+    .branch-comparison-scroll {
+      flex: 1;
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
+
+    .branch-comparison-header {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--background-color);
+    }
+
+    .branch-graph-lane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding: var(--spacing-half) var(--spacing) 0 calc(var(--branch-graph-inset) + var(--spacing));
+    }
+
+    .branch-graph-lane + .branch-graph-lane {
+      box-shadow: inset 1px 0 var(--box-border-color);
+    }
+
+    .branch-graph-rail {
+      position: relative;
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: calc(var(--branch-graph-row-height) / 2);
+        bottom: calc(var(--branch-graph-row-height) / 2);
+        left: calc(-1px - var(--spacing));
+        width: 2px;
+        background: var(--branch-graph-color);
+        pointer-events: none;
+      }
+    }
+
+    .branch-graph-lane[data-connected='true'] .branch-graph-rail {
+      flex: 1;
+
+      &::before {
+        bottom: 0;
+      }
+    }
+
+    .branch-graph-empty {
+      color: var(--text-secondary-color);
+      font-size: var(--font-size-sm);
+      line-height: var(--branch-graph-row-height);
+    }
+
+    .branch-graph-shared {
+      position: relative;
+      --branch-graph-junction: var(--branch-graph-inset);
+      --branch-graph-connector-height: 32px;
+      padding: var(--branch-graph-connector-height) var(--spacing) var(--spacing);
+
+      &[data-right='true'] {
+        --branch-graph-junction: calc(50% + var(--branch-graph-inset));
+      }
+
+      &[data-left='false'][data-right='false'] {
+        padding-top: var(--spacing);
+      }
+    }
+
+    .branch-graph-connector {
+      position: absolute;
+      top: 0;
+      left: var(--branch-graph-inset);
+      width: 50%;
+      height: var(--branch-graph-connector-height);
+      overflow: visible;
+      pointer-events: none;
+
+      &.branch-graph-color-1 {
+        left: calc(var(--branch-graph-junction) - 1px);
+        width: 2px;
+        background: var(--branch-graph-color);
+      }
+
+      path {
+        fill: none;
+        stroke: var(--branch-graph-color);
+        stroke-width: 2;
+        stroke-linecap: round;
+      }
+    }
+
+    .branch-graph-base-card {
+      padding: var(--spacing-half) var(--spacing);
+      border: var(--base-border);
+      border-radius: 6px;
+      background: var(--box-alt-background-color);
+      min-width: 0;
+    }
+
+    .branch-graph-shared:not([data-left='false'][data-right='false'])::after {
+      content: '';
+      position: absolute;
+      top: var(--branch-graph-connector-height);
+      left: var(--branch-graph-junction);
+      width: 9px;
+      height: 9px;
+      transform: translate(-50%, -50%);
+      border: 2px solid var(--background-color);
+      border-radius: 50%;
+      background: var(--branch-graph-color);
+      pointer-events: none;
+    }
+
+    .branch-graph-base-tips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-half);
+      font-size: var(--font-size-sm);
+
+      span {
+        padding-left: var(--spacing-half);
+        border-left: 2px solid var(--branch-graph-color);
+        overflow-wrap: anywhere;
+      }
+    }
+
+    .branch-graph-node {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-half);
+      width: 100%;
+      height: var(--branch-graph-row-height);
+      border: 0;
+      border-radius: 4px;
+      padding: 0;
+      background: transparent;
+      color: var(--text-color);
+      text-align: left;
+      cursor: pointer;
+
+      .branch-graph-dot {
+        position: absolute;
+        top: 50%;
+        left: calc(-1 * var(--spacing));
+        transform: translate(-50%, -50%);
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--branch-graph-color);
+      }
+
+      .branch-graph-summary {
+        @include ellipsis;
+      }
+
+      code,
+      .branch-graph-base {
+        flex: none;
+        color: var(--text-secondary-color);
+        font-size: var(--font-size-sm);
+      }
+
+      &[data-search-context='true'] {
+        color: var(--text-secondary-color);
+
+        .branch-graph-dot {
+          box-shadow: inset 0 0 0 1px var(--branch-graph-color);
+          background: var(--background-color);
+        }
+      }
+
+      &[data-branch-tip='true'] .branch-graph-dot,
+      &[aria-pressed='true'] .branch-graph-dot {
+        width: 11px;
+        height: 11px;
+      }
+
+      &:hover,
+      &:focus-visible,
+      &[aria-pressed='true'] {
+        outline: 1px solid var(--branch-graph-color);
+      }
+    }
+
+    .branch-graph-base-card .branch-graph-node {
+      .branch-graph-dot {
+        display: none;
+      }
+
+      .branch-graph-base {
+        padding: 2px var(--spacing-half);
+        border: var(--base-border);
+        border-radius: 4px;
+        font-weight: var(--font-weight-semibold);
+      }
+    }
+  }
+
   .merge-status {
     background: var(--background-color);
     border-width: 0 var(--spacing-half);

@@ -164,6 +164,7 @@ import {
 import { shell } from '../app-shell'
 import {
   CompareAction,
+  ComparisonMode,
   HistoryTabMode,
   Foldout,
   FoldoutType,
@@ -1790,11 +1791,15 @@ export class AppStore extends TypedBaseStore<IAppState> {
     repository: Repository,
     commitSHAs: ReadonlyArray<string>
   ) {
-    const { showCommitGraph, historySearchText } =
+    const { showCommitGraph, historySearchText, formState } =
       this.repositoryStateCache.get(repository).compareState
+    const graphIsVisible =
+      showCommitGraph ||
+      (formState.kind === HistoryTabMode.Compare &&
+        formState.comparisonMode === ComparisonMode.Graph)
     const lookup = this.gitStoreCache.get(repository).commitLookup
     const selectable =
-      showCommitGraph && historySearchText.trim().length > 0
+      graphIsVisible && historySearchText.trim().length > 0
         ? commitSHAs.filter(sha => {
             const commit = lookup.get(sha)
             return (
@@ -1972,6 +1977,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       kind: HistoryTabMode.Compare,
       comparisonBranch,
       comparisonMode: action.comparisonMode,
+      mergeBase: compare.mergeBase,
       aheadBehind,
     }
 

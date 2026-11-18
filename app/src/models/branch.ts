@@ -18,6 +18,8 @@ export interface IAheadBehind {
 /** The result of comparing two refs in a repository. */
 export interface ICompareResult extends IAheadBehind {
   readonly commits: ReadonlyArray<Commit>
+  /** The shared commit shown in a branch comparison diagram, if any. */
+  readonly mergeBase?: string | null
 }
 
 /** Basic data about a branch, and the branch it's tracking. */

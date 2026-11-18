@@ -9,6 +9,7 @@ import {
   IDisplayHistory,
 } from '../../lib/app-state'
 import { CommitList } from './commit-list'
+import { BranchComparisonGraph } from './branch-comparison-graph'
 import { Repository } from '../../models/repository'
 import { Branch } from '../../models/branch'
 import { defaultErrorHandler, Dispatcher } from '../dispatcher'
@@ -90,6 +91,7 @@ export class CompareSidebar extends React.Component<
   private readonly loadChangedFilesScheduler = new ThrottledScheduler(200)
   private branchList: BranchList | null = null
   private commitListRef = React.createRef<CommitList>()
+  private comparisonGraphRef = React.createRef<HTMLElement>()
   private loadingMoreCommitsPromise: Promise<void> | null = null
   private resultCount = 0
 
@@ -146,7 +148,15 @@ export class CompareSidebar extends React.Component<
   }
 
   public focusHistory() {
-    this.commitListRef.current?.focus()
+    if (this.commitListRef.current !== null) {
+      this.commitListRef.current.focus()
+    } else {
+      const graph = this.comparisonGraphRef.current
+      const node =
+        graph?.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ??
+        graph?.querySelector('button')
+      node?.focus()
+    }
   }
 
   public componentWillMount() {
@@ -165,6 +175,12 @@ export class CompareSidebar extends React.Component<
 
   public render() {
     const { branches, filterText, showBranchList } = this.props.compareState
+    const formState = this.props.compareState.formState
+    const isComparisonGraph =
+      formState.kind === HistoryTabMode.Compare &&
+      formState.comparisonMode === ComparisonMode.Graph
+    const graphIsVisible =
+      this.props.compareState.showCommitGraph || isComparisonGraph
     const placeholderText = getPlaceholderText(this.props.compareState)
 
     return (
@@ -186,25 +202,27 @@ export class CompareSidebar extends React.Component<
         </div>
 
         <div className="history-author-filter">
-          <Button
-            className="history-graph-toggle"
-            size="small"
-            onClick={this.onGraphToggled}
-            ariaLabel={
-              this.props.compareState.showCommitGraph
-                ? 'Hide commit graph'
-                : 'Show commit graph'
-            }
-            tooltip={
-              this.props.compareState.showCommitGraph
-                ? 'Hide commit graph'
-                : 'Show commit graph'
-            }
-            ariaPressed={this.props.compareState.showCommitGraph}
-            disabled={this.props.isMultiCommitOperationInProgress === true}
-          >
-            <Octicon symbol={octicons.gitBranch} />
-          </Button>
+          {!isComparisonGraph && (
+            <Button
+              className="history-graph-toggle"
+              size="small"
+              onClick={this.onGraphToggled}
+              ariaLabel={
+                this.props.compareState.showCommitGraph
+                  ? 'Hide commit graph'
+                  : 'Show commit graph'
+              }
+              tooltip={
+                this.props.compareState.showCommitGraph
+                  ? 'Hide commit graph'
+                  : 'Show commit graph'
+              }
+              ariaPressed={this.props.compareState.showCommitGraph}
+              disabled={this.props.isMultiCommitOperationInProgress === true}
+            >
+              <Octicon symbol={octicons.gitBranch} />
+            </Button>
+          )}
           <TextBox
             ariaLabel="Search commits by author, title, or description"
             placeholder="Search author, title, or description"
@@ -220,7 +238,7 @@ export class CompareSidebar extends React.Component<
             this.renderSearchNavigation()}
         </div>
 
-        {this.props.compareState.showCommitGraph &&
+        {graphIsVisible &&
           this.props.compareState.historySearchText.trim().length > 0 && (
             <div className="history-graph-search-note" role="status">
               Matches are highlighted. Other commits remain visible to preserve
@@ -406,7 +424,28 @@ export class CompareSidebar extends React.Component<
     this.props.dispatcher.clearDragElement()
   }
 
+  private onGraphCommitSelected = (commit: Commit) => {
+    this.onCommitsSelected([commit], true)
+  }
+
   private renderActiveTab(view: ICompareBranch) {
+    if (view.comparisonMode === ComparisonMode.Graph) {
+      return (
+        <BranchComparisonGraph
+          containerRef={this.comparisonGraphRef}
+          mainline={view.comparisonBranch}
+          currentBranch={this.props.currentBranch}
+          aheadBehind={view.aheadBehind}
+          mergeBase={view.mergeBase}
+          commitSHAs={this.props.compareState.commitSHAs}
+          commitLookup={this.props.commitLookup}
+          selectedSHA={this.props.selectedCommitShas[0]}
+          searchText={this.props.compareState.historySearchText}
+          onCommitSelected={this.onGraphCommitSelected}
+        />
+      )
+    }
+
     return (
       <div className="compare-commit-list">
         {this.renderCommitList()}
@@ -468,7 +507,16 @@ export class CompareSidebar extends React.Component<
     }
 
     const comparisonMode =
-      index === 0 ? ComparisonMode.Behind : ComparisonMode.Ahead
+      index === 0
+        ? ComparisonMode.Behind
+        : index === 1
+        ? ComparisonMode.Ahead
+        : index === 2
+        ? ComparisonMode.Graph
+        : null
+    if (comparisonMode === null) {
+      return
+    }
     const branch = formState.comparisonBranch
 
     this.props.dispatcher.executeCompare(this.props.repository, {
@@ -480,7 +528,11 @@ export class CompareSidebar extends React.Component<
 
   private renderTabBar(formState: ICompareBranch) {
     const selectedTab =
-      formState.comparisonMode === ComparisonMode.Behind ? 0 : 1
+      formState.comparisonMode === ComparisonMode.Behind
+        ? 0
+        : formState.comparisonMode === ComparisonMode.Ahead
+        ? 1
+        : 2
 
     return (
       <div className="compare-content">
@@ -489,6 +541,7 @@ export class CompareSidebar extends React.Component<
             formState.aheadBehind.behind
           )})`}</span>
           <span>{`Ahead (${formatNumber(formState.aheadBehind.ahead)})`}</span>
+          <span>Graph</span>
         </TabBar>
         {this.renderActiveTab(formState)}
       </div>
@@ -567,12 +620,17 @@ export class CompareSidebar extends React.Component<
     commits: ReadonlyArray<Commit>,
     isContiguous: boolean
   ) => {
+    const { formState, historySearchText, showCommitGraph } =
+      this.props.compareState
+    const graphIsVisible =
+      showCommitGraph ||
+      (formState.kind === HistoryTabMode.Compare &&
+        formState.comparisonMode === ComparisonMode.Graph)
     this.props.dispatcher.changeCommitSelection(
       this.props.repository,
       commits.map(c => c.sha),
       isContiguous &&
-        ((!this.props.compareState.showCommitGraph &&
-          this.props.compareState.historySearchText.trim().length === 0) ||
+        ((!graphIsVisible && historySearchText.trim().length === 0) ||
           commits.length <= 1)
     )
 

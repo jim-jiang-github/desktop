@@ -126,6 +126,15 @@ Reordering, squashing, undoing, and amending are disabled in graph mode; turn it
 off to use those position-dependent actions. Commit selection, diffs, and
 cherry-picking remain available.
 
+When comparing branches, the separate **Graph** tab replaces the commit list
+with two columns: the selected comparison branch on the left and the current
+branch on the right. The common ancestor appears in a full-width panel below
+the columns. If it is also a branch tip, the panel identifies that branch
+without drawing a line for commits it does not have. Rows are ordered within
+each branch, not aligned by date or ancestry across columns. Merged commits
+stay in their branch's column instead of opening extra branches. Each node
+shows its title and short SHA; select it to inspect its diff.
+
 ## More Resources
 
 See [desktop.github.com](https://desktop.github.com) for more product-oriented

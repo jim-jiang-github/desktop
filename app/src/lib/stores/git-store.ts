@@ -75,6 +75,7 @@ import {
   updateRemoteHEAD,
   getRemoteHEAD,
   MergeOptions,
+  getMergeBase,
 } from '../git'
 import { GitError as DugiteError } from '../../lib/git'
 import { GitError } from 'dugite'
@@ -1868,26 +1869,56 @@ export class GitStore extends BaseStore {
       return null
     }
 
-    const revisionRange =
-      comparisonMode === ComparisonMode.Ahead
-        ? revRange(branch.name, base.name)
-        : revRange(base.name, branch.name)
-    const commitsToLoad =
-      comparisonMode === ComparisonMode.Ahead
-        ? aheadBehind.ahead
-        : aheadBehind.behind
-    const commits = (
-      await getCommits(
-        this.repository,
-        revisionRange,
-        commitsToLoad,
-        undefined,
-        showCommitGraph ? ['--topo-order'] : []
-      )
-    ).filter(
-      commit =>
-        showCommitGraph || matchesCommitSearch(commit, historySearchText)
+    const isGraphComparison = comparisonMode === ComparisonMode.Graph
+    const revisionRange = isGraphComparison
+      ? revSymmetricDifference(base.name, branch.name)
+      : comparisonMode === ComparisonMode.Ahead
+      ? revRange(branch.name, base.name)
+      : revRange(base.name, branch.name)
+    const commitsToLoad = isGraphComparison
+      ? aheadBehind.ahead + aheadBehind.behind
+      : comparisonMode === ComparisonMode.Ahead
+      ? aheadBehind.ahead
+      : aheadBehind.behind
+    const comparisonCommits = await getCommits(
+      this.repository,
+      revisionRange,
+      commitsToLoad,
+      undefined,
+      isGraphComparison || showCommitGraph ? ['--topo-order'] : []
     )
+    const boundaryCommits: Commit[] = []
+    let mergeBase: string | null | undefined
+    if (isGraphComparison) {
+      mergeBase = await getMergeBase(this.repository, base.name, branch.name)
+      const boundaryShas = new Set([branch.tip.sha, mergeBase])
+      for (const sha of boundaryShas) {
+        if (
+          sha === null ||
+          comparisonCommits.some(commit => commit.sha === sha)
+        ) {
+          continue
+        }
+
+        const commit = await getCommit(this.repository, sha)
+        if (commit === null) {
+          throw new Error(
+            `Unable to load commit '${sha}' for the branch comparison graph.`
+          )
+        }
+        boundaryCommits.push(commit)
+      }
+    }
+
+    const commits = [
+      ...comparisonCommits.filter(
+        commit =>
+          isGraphComparison ||
+          showCommitGraph ||
+          matchesCommitSearch(commit, historySearchText)
+      ),
+      ...boundaryCommits,
+    ]
 
     if (commits.length > 0) {
       this.storeCommits(commits)
@@ -1895,6 +1926,7 @@ export class GitStore extends BaseStore {
 
     return {
       commits,
+      mergeBase,
       ahead: aheadBehind.ahead,
       behind: aheadBehind.behind,
     }

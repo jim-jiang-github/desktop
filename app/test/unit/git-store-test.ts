@@ -196,6 +196,53 @@ describe('GitStore', () => {
       )
     })
 
+    it('loads both branches and their merge base for the comparison graph', async t => {
+      const repo = await setupEmptyRepository(t)
+      await git(
+        ['commit', '--allow-empty', '-m', 'shared base'],
+        repo.path,
+        'test'
+      )
+      const [base] = await getCommits(repo, 'HEAD', 1)
+      await git(['checkout', '-b', 'develop'], repo.path, 'test')
+      await git(
+        ['commit', '--allow-empty', '-m', 'develop change'],
+        repo.path,
+        'test'
+      )
+      await git(['checkout', '-b', 'feature', base.sha], repo.path, 'test')
+      await git(
+        ['commit', '--allow-empty', '-m', 'feature change'],
+        repo.path,
+        'test'
+      )
+
+      const gitStore = new GitStore(repo, shell, new TestStatsStore())
+      await gitStore.loadStatus()
+      await gitStore.loadBranches()
+      const develop = gitStore.allBranches.find(
+        branch => branch.name === 'develop'
+      )
+      assert.ok(develop)
+
+      const comparison = await gitStore.getCompareCommits(
+        develop,
+        ComparisonMode.Graph,
+        'no matching commit',
+        false
+      )
+
+      assert.ok(comparison)
+      assert.strictEqual(comparison.ahead, 1)
+      assert.strictEqual(comparison.behind, 1)
+      assert.strictEqual(comparison.mergeBase, base.sha)
+      assert.deepStrictEqual(
+        new Set(comparison.commits.map(commit => commit.summary)),
+        new Set(['develop change', 'feature change', 'shared base'])
+      )
+      assert.ok(gitStore.commitLookup.has(base.sha))
+    })
+
     it('includes HEAD when loading commits', async t => {
       const path = await setupFixtureRepository(
         t,

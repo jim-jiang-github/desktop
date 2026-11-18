@@ -26,6 +26,7 @@ function createProps(
   const dispatcher = {
     initializeCompare: mock.fn(),
     updateCompareForm: mock.fn(),
+    executeCompare: mock.fn(),
     setHistorySearchText: mock.fn(),
     setHistoryGraphEnabled: mock.fn(),
     changeCommitSelection: mock.fn(),
@@ -236,6 +237,195 @@ describe('History search', () => {
         .getAttribute('aria-disabled'),
       'true'
     )
+  })
+
+  it('labels every node and keeps merged commits on the two comparison lanes', () => {
+    const props = createProps()
+    const branch = new Branch(
+      'develop',
+      null,
+      { sha: 'develop-tip' },
+      BranchType.Local,
+      'refs/heads/develop'
+    )
+    const formState = {
+      kind: HistoryTabMode.Compare,
+      comparisonMode: ComparisonMode.Graph,
+      comparisonBranch: branch,
+      mergeBase: 'base',
+      aheadBehind: { ahead: 3, behind: 2 },
+    } as const
+    const author = new CommitIdentity('Alice', 'alice@example.com', new Date(0))
+    const commits = [
+      new Commit(
+        'topic-tip',
+        'topic',
+        'Topic change',
+        '',
+        author,
+        author,
+        ['base'],
+        [],
+        []
+      ),
+      new Commit(
+        'develop-tip',
+        'develop',
+        'Develop change',
+        '',
+        author,
+        author,
+        ['base', 'merged-tip'],
+        [],
+        []
+      ),
+      new Commit(
+        'merged-tip',
+        'merged',
+        'Merged change',
+        '',
+        author,
+        author,
+        ['base'],
+        [],
+        []
+      ),
+      new Commit(
+        'base',
+        'base',
+        'Shared commit',
+        '',
+        author,
+        author,
+        [],
+        [],
+        []
+      ),
+    ]
+    const compareState = {
+      ...props.compareState,
+      formState,
+      branches: [branch],
+      commitSHAs: commits.map(commit => commit.sha),
+      showCommitGraph: false,
+    }
+    const currentBranch = new Branch(
+      'topic',
+      null,
+      { sha: 'topic-tip' },
+      BranchType.Local,
+      'refs/heads/topic'
+    )
+    const nextProps = {
+      ...props,
+      compareState,
+      currentBranch,
+      commitLookup: new Map(commits.map(commit => [commit.sha, commit])),
+    }
+    const executeCompare = mock.method(props.dispatcher, 'executeCompare')
+    const selection = mock.method(props.dispatcher, 'changeCommitSelection')
+    const sidebar = React.createRef<CompareSidebar>()
+    const view = render(<CompareSidebar {...nextProps} ref={sidebar} />)
+    assert.ok(screen.getByText('Behind (2)'))
+    assert.ok(screen.getByText('Ahead (3)'))
+    assert.ok(screen.getByText('Graph'))
+    const diagram = screen.getByRole('region', {
+      name: 'Branch comparison graph',
+    })
+    assert.ok(screen.getByText('Branches have diverged'))
+    const left = screen.getByRole('group', { name: 'develop' })
+    const right = screen.getByRole('group', { name: 'topic' })
+    assert.ok(left.contains(screen.getByText('Develop change')))
+    assert.ok(left.contains(screen.getByText('Merged change')))
+    assert.ok(right.contains(screen.getByText('Topic change')))
+    assert.strictEqual(left.contains(screen.getByText('Topic change')), false)
+    assert.strictEqual(
+      right.contains(screen.getByText('Develop change')),
+      false
+    )
+    const shared = screen.getByRole('group', { name: 'Common ancestor' })
+    assert.strictEqual(
+      shared.querySelectorAll('.branch-graph-connector').length,
+      2
+    )
+    assert.strictEqual(view.container.querySelector('.commit-list-item'), null)
+    const node = screen.getByRole('button', { name: /Topic change/ })
+    assert.ok(diagram.contains(node))
+    assert.ok(screen.getByText('Topic change'))
+    assert.ok(screen.getByText('Develop change'))
+    assert.ok(
+      screen.getByText('Merged change').closest('.branch-graph-color-0')
+    )
+    assert.ok(screen.getByText('Shared commit'))
+    assert.ok(screen.getByText('Merge base'))
+    assert.ok(
+      shared.contains(screen.getByRole('button', { name: /Shared commit/ }))
+    )
+    assert.strictEqual(left.contains(screen.getByText('Shared commit')), false)
+    assert.strictEqual(right.contains(screen.getByText('Shared commit')), false)
+    assert.strictEqual(node.querySelector('code')?.textContent, 'topic')
+    fireEvent.click(node)
+    assert.deepStrictEqual(selection.mock.calls[0].arguments, [
+      repository,
+      ['topic-tip'],
+      true,
+    ])
+    assert.strictEqual(
+      screen.queryByRole('button', { name: 'Show commit graph' }),
+      null
+    )
+
+    fireEvent.click(screen.getByText('Graph'))
+    assert.deepStrictEqual(executeCompare.mock.calls[0].arguments, [
+      repository,
+      {
+        kind: HistoryTabMode.Compare,
+        branch,
+        comparisonMode: ComparisonMode.Graph,
+      },
+    ])
+
+    view.rerender(
+      <CompareSidebar
+        {...nextProps}
+        ref={sidebar}
+        currentBranch={
+          new Branch(
+            'topic',
+            null,
+            { sha: 'base' },
+            BranchType.Local,
+            'refs/heads/topic'
+          )
+        }
+        compareState={{
+          ...compareState,
+          formState: { ...formState, aheadBehind: { ahead: 0, behind: 2 } },
+          commitSHAs: commits.slice(1).map(commit => commit.sha),
+        }}
+      />
+    )
+    assert.ok(screen.getByText('Comparison branch contains the current branch'))
+    const containedBase = screen.getByRole('group', { name: 'Common ancestor' })
+    assert.strictEqual(
+      containedBase.querySelectorAll('.branch-graph-connector').length,
+      1
+    )
+    assert.ok(
+      containedBase.querySelector(
+        '.branch-graph-color-0.branch-graph-connector'
+      )
+    )
+    assert.ok(
+      containedBase.contains(screen.getByText('Current branch tip: topic'))
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Shared commit/ }))
+    assert.deepStrictEqual(selection.mock.calls[1].arguments, [
+      repository,
+      ['base'],
+      true,
+    ])
+    sidebar.current?.['loadChangedFilesScheduler'].clear()
   })
 
   it('shows graph mode by default and explains the dimmed search context', () => {
