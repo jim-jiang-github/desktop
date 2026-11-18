@@ -963,6 +963,9 @@ export interface ICompareState {
   /** The author or title search applied to history and comparison commits. */
   readonly historySearchText: string
 
+  /** Whether history shows topologically ordered commit graph lanes. */
+  readonly showCommitGraph: boolean
+
   /** The SHA associated with the most recent history state */
   readonly tip: string | null
 

@@ -34,8 +34,47 @@
   }
 
   .history-author-filter {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-half);
+    .history-graph-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 24px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+    }
+    .text-box-component {
+      flex: 1;
+      min-width: 0;
+    }
+    .history-search-navigation {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-third);
+      color: var(--text-secondary-color);
+      font-size: var(--font-size-sm);
+      white-space: nowrap;
+    }
+    .history-search-navigation-button {
+      min-width: 24px;
+      padding: 0 var(--spacing-third);
+    }
+    button[aria-pressed='true'] {
+      background: var(--box-selected-background-color);
+      color: var(--box-selected-text-color);
+    }
     background: var(--box-alt-background-color);
     padding: var(--spacing-half);
+    border-bottom: var(--base-border);
+  }
+
+  .history-graph-search-note {
+    padding: var(--spacing-half) var(--spacing);
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-sm);
     border-bottom: var(--base-border);
   }
 

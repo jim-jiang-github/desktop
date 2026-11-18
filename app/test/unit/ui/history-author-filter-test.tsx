@@ -27,8 +27,10 @@ function createProps(
     initializeCompare: mock.fn(),
     updateCompareForm: mock.fn(),
     setHistorySearchText: mock.fn(),
+    setHistoryGraphEnabled: mock.fn(),
     changeCommitSelection: mock.fn(),
     loadChangedFilesForCurrentSelection: mock.fn(),
+    loadNextCommitBatch: mock.fn(async () => {}),
   } as unknown as Dispatcher
   return {
     repository,
@@ -70,7 +72,7 @@ describe('History search', () => {
     render(<CompareSidebar {...props} />)
     assert.ok(screen.getByRole('textbox', { name: 'Branch filter' }))
     const input = screen.getByRole('searchbox', {
-      name: 'Search commits by author or title',
+      name: 'Search commits by author, title, or description',
     })
     fireEvent.change(input, { target: { value: 'release fix' } })
     assert.deepStrictEqual(setFilter.mock.calls[0].arguments, [
@@ -84,8 +86,82 @@ describe('History search', () => {
     const setFilter = mock.method(props.dispatcher, 'setHistorySearchText')
     render(<CompareSidebar {...props} />)
     assert.ok(screen.getByText('No commits match this search'))
-    fireEvent.click(screen.getByRole('button', { name: /clear/i }))
+    const search = screen.getByRole('searchbox', {
+      name: 'Search commits by author, title, or description',
+    })
+    assert.ok(search instanceof HTMLInputElement)
+    assert.strictEqual(screen.queryByRole('button', { name: 'Clear' }), null)
+    search.value = ''
+    fireEvent(search, new Event('search'))
     assert.ok(setFilter.mock.calls.some(call => call.arguments[1] === ''))
+  })
+
+  it('navigates between matching commits from the search controls and keyboard', () => {
+    const props = createProps('Alice')
+    const author = new CommitIdentity('Alice', 'alice@example.com', new Date(0))
+    const commits = ['newer', 'middle', 'older'].map(
+      sha => new Commit(sha, sha, sha, '', author, author, [], [], [])
+    )
+    const compareState = {
+      ...props.compareState,
+      commitSHAs: commits.map(commit => commit.sha),
+    }
+    const nextProps = {
+      ...props,
+      compareState,
+      commitLookup: new Map(commits.map(commit => [commit.sha, commit])),
+      selectedCommitShas: ['newer'],
+    }
+    const selection = mock.method(props.dispatcher, 'changeCommitSelection')
+    const sidebarRef = React.createRef<CompareSidebar>()
+    const view = render(<CompareSidebar ref={sidebarRef} {...nextProps} />)
+
+    assert.strictEqual(
+      screen
+        .getByRole('button', { name: 'Previous matching commit' })
+        .getAttribute('aria-disabled'),
+      'true'
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Next matching commit' })
+    )
+    assert.deepStrictEqual(selection.mock.calls[0].arguments, [
+      repository,
+      ['middle'],
+      true,
+    ])
+
+    view.rerender(
+      <CompareSidebar {...nextProps} selectedCommitShas={['middle']} />
+    )
+    assert.strictEqual(
+      screen
+        .getByRole('button', { name: 'Previous matching commit' })
+        .getAttribute('aria-disabled'),
+      null
+    )
+    const search = screen.getByRole('searchbox', {
+      name: 'Search commits by author, title, or description',
+    })
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    assert.deepStrictEqual(selection.mock.calls[1].arguments, [
+      repository,
+      ['older'],
+      true,
+    ])
+
+    view.rerender(
+      <CompareSidebar {...nextProps} selectedCommitShas={['older']} />
+    )
+    assert.strictEqual(
+      screen
+        .getByRole('button', { name: 'Next matching commit' })
+        .getAttribute('aria-disabled'),
+      'true'
+    )
+
+    sidebarRef.current?.['loadChangedFilesScheduler'].clear()
+    view.unmount()
   })
 
   it('keeps cherry-pick available but disables position-dependent history actions', () => {
@@ -148,11 +224,66 @@ describe('History search', () => {
       />
     )
     const input = screen.getByRole('searchbox', {
-      name: 'Search commits by author or title',
+      name: 'Search commits by author, title, or description',
     })
     assert.ok(input instanceof HTMLInputElement)
     assert.strictEqual(input.value, 'Alice')
     assert.strictEqual(input.disabled, true)
     assert.ok(screen.getByText('Ahead (5)'))
+    assert.strictEqual(
+      screen
+        .getByRole('button', { name: 'Hide commit graph' })
+        .getAttribute('aria-disabled'),
+      'true'
+    )
+  })
+
+  it('shows graph mode by default and explains the dimmed search context', () => {
+    const props = createProps('fix')
+    const toggle = mock.method(props.dispatcher, 'setHistoryGraphEnabled')
+    const view = render(<CompareSidebar {...props} />)
+    const graphToggle = screen.getByRole('button', {
+      name: 'Hide commit graph',
+      pressed: true,
+    })
+    assert.ok(graphToggle.querySelector('svg'))
+    assert.strictEqual(graphToggle.textContent, '')
+    fireEvent.click(graphToggle)
+    assert.deepStrictEqual(toggle.mock.calls[0].arguments, [repository, false])
+    view.rerender(
+      <CompareSidebar
+        {...props}
+        compareState={{ ...props.compareState, showCommitGraph: true }}
+      />
+    )
+    assert.ok(
+      screen.getByRole('button', {
+        name: 'Hide commit graph',
+        pressed: true,
+      })
+    )
+    assert.ok(screen.getByText(/Other commits remain visible/))
+    const sidebar = new CompareSidebar({
+      ...props,
+      compareState: { ...props.compareState, showCommitGraph: true },
+    })
+    const list = sidebar['renderCommitList']()
+    assert.strictEqual(list.props.showCommitGraph, true)
+    assert.strictEqual(list.props.historySearchText, 'fix')
+    assert.strictEqual(list.props.disableReordering, true)
+    assert.strictEqual(typeof list.props.onCherryPick, 'function')
+  })
+
+  it('allows the commit graph to be shown again', () => {
+    const props = createProps()
+    const toggle = mock.method(props.dispatcher, 'setHistoryGraphEnabled')
+    render(
+      <CompareSidebar
+        {...props}
+        compareState={{ ...props.compareState, showCommitGraph: false }}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Show commit graph' }))
+    assert.deepStrictEqual(toggle.mock.calls[0].arguments, [repository, true])
   })
 })

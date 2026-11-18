@@ -101,20 +101,30 @@ changes are left untouched. Merge commits are reverted relative to their first
 parent. This does not restore the entire file to an old version or create a
 commit automatically.
 
-## Searching commits by author or title
+## Searching commits and viewing the graph
 
-In **History**, use **Search by author name, email, or title** below the branch
+In **History**, use **Search author, title, or description** below the branch
 comparison field to search the current branch's entire history. The search is
 case-insensitive and treats the query as literal text. It also applies to the
 Ahead and Behind lists when comparing branches. Clear the field to show all
-commits again.
+commits again. Use the previous/next controls or the Up/Down keys in the search
+field to move between matching commits.
 
-The search matches the commit title or Git author name/email, not the committer
+The search matches the commit title, description, or Git author name/email, not the committer
 or `Co-authored-by` trailers. Matching commits can still be multi-selected and
 cherry-picked; check for dependencies on other authors' commits before applying
 them to another branch. Reordering, squashing, undoing, and amending are disabled
 while a search is active. History entries show the exact author date and time
 using the configured date and time formats.
+
+Toggle **Graph** beside the search field to show colored commit lanes, merge
+nodes, and branch labels in the existing History list. Graph mode uses
+topological order and shows the current branch's reachable history (or the
+selected Ahead/Behind range), not every branch in the repository. During search,
+unmatched commits remain visible but dimmed so parent connections stay accurate.
+Reordering, squashing, undoing, and amending are disabled in graph mode; turn it
+off to use those position-dependent actions. Commit selection, diffs, and
+cherry-picking remain available.
 
 ## More Resources
 

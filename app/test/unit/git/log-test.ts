@@ -90,7 +90,7 @@ describe('git/log', () => {
           '--allow-empty',
           '--author=Alice <alice@example.com>',
           '-m',
-          'Shared work\n\nCo-authored-by: Bob <bob@example.com>',
+          'Shared work\n\nFix the Bluetooth connection\n\nCo-authored-by: Bob <bob@example.com>',
         ],
         repository.path,
         'test'
@@ -98,6 +98,11 @@ describe('git/log', () => {
       const [commit] = await getCommits(repository, 'HEAD')
       assert.strictEqual(matchesCommitSearch(commit, 'Bob'), false)
       assert.strictEqual(matchesCommitSearch(commit, 'alice'), true)
+      assert.strictEqual(
+        matchesCommitSearch(commit, 'BLUETOOTH connection'),
+        true
+      )
+      assert.strictEqual(matchesCommitSearch(commit, 'Shared work'), true)
     })
 
     it('preserves revision range boundaries while searching comparisons', async t => {

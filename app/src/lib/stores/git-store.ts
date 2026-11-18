@@ -235,7 +235,8 @@ export class GitStore extends BaseStore {
   public async loadCommitBatch(
     commitish: string,
     skip: number,
-    historySearchText: string = ''
+    historySearchText: string = '',
+    showCommitGraph: boolean = false
   ) {
     if (this.requestsInFight.has(LoadingHistoryRequestKey)) {
       return null
@@ -254,6 +255,7 @@ export class GitStore extends BaseStore {
       skip,
       searchText,
       tipSha,
+      showCommitGraph,
     ])
     const existingRequest = this.commitBatchRequests.get(requestKey)
     if (existingRequest !== undefined) {
@@ -261,7 +263,9 @@ export class GitStore extends BaseStore {
     }
 
     const request = (
-      searchText.length === 0
+      showCommitGraph
+        ? this.loadGraphCommitBatch(commitish, skip, searchText)
+        : searchText.length === 0
         ? this.performFailableOperation(() =>
             getCommits(this.repository, commitish, CommitBatchSize, skip)
           )
@@ -279,6 +283,33 @@ export class GitStore extends BaseStore {
       })
     this.commitBatchRequests.set(requestKey, request)
     return request
+  }
+
+  private loadGraphCommitBatch(
+    commitish: string,
+    skip: number,
+    searchText: string
+  ): Promise<ReadonlyArray<Commit> | undefined> {
+    return this.performFailableOperation(async () => {
+      const commits: Commit[] = []
+      while (true) {
+        const batch = await getCommits(
+          this.repository,
+          commitish,
+          CommitBatchSize,
+          skip + commits.length,
+          ['--topo-order']
+        )
+        commits.push(...batch)
+        if (
+          searchText.length === 0 ||
+          batch.length < CommitBatchSize ||
+          batch.some(commit => matchesCommitSearch(commit, searchText))
+        ) {
+          return commits
+        }
+      }
+    })
   }
 
   private async loadFilteredCommitBatch(
@@ -1820,7 +1851,8 @@ export class GitStore extends BaseStore {
   public async getCompareCommits(
     branch: Branch,
     comparisonMode: ComparisonMode,
-    historySearchText: string = ''
+    historySearchText: string = '',
+    showCommitGraph: boolean = false
   ): Promise<ICompareResult | null> {
     if (this.tip.kind !== TipState.Valid) {
       return null
@@ -1845,8 +1877,17 @@ export class GitStore extends BaseStore {
         ? aheadBehind.ahead
         : aheadBehind.behind
     const commits = (
-      await getCommits(this.repository, revisionRange, commitsToLoad)
-    ).filter(commit => matchesCommitSearch(commit, historySearchText))
+      await getCommits(
+        this.repository,
+        revisionRange,
+        commitsToLoad,
+        undefined,
+        showCommitGraph ? ['--topo-order'] : []
+      )
+    ).filter(
+      commit =>
+        showCommitGraph || matchesCommitSearch(commit, historySearchText)
+    )
 
     if (commits.length > 0) {
       this.storeCommits(commits)

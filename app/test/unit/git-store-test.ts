@@ -33,6 +33,82 @@ import { isolateGitConfig } from '../helpers/git-config'
 
 describe('GitStore', () => {
   describe('loadCommitBatch', () => {
+    it('finds old titles beyond the first unfiltered page and searches descriptions', async t => {
+      const path = await setupFixtureRepository(
+        t,
+        'repository-with-105-commits'
+      )
+      const repo = new Repository(path, -1, null, false)
+      const gitStore = new GitStore(repo, shell, new TestStatsStore())
+      const all = await getCommits(repo, 'HEAD')
+      const oldest = all[all.length - 1]
+      const matches = await gitStore.loadCommitBatch('HEAD', 0, oldest.summary)
+      assert.ok(matches?.includes(oldest.sha))
+
+      await git(
+        [
+          'commit',
+          '--allow-empty',
+          '-m',
+          'New title',
+          '-m',
+          'Unique description keyword',
+        ],
+        path,
+        'test'
+      )
+      await gitStore.loadStatus()
+      const [tip] = await getCommits(repo, 'HEAD', 1)
+      assert.deepStrictEqual(
+        await gitStore.loadCommitBatch('HEAD', 0, 'unique DESCRIPTION keyword'),
+        [tip.sha]
+      )
+      const first = await gitStore.loadCommitBatch('HEAD', 0, 'New title', true)
+      const second = await gitStore.loadCommitBatch(
+        'HEAD',
+        100,
+        'does not match',
+        true
+      )
+      assert.strictEqual(first?.length, 100)
+      assert.strictEqual(second?.length, 6)
+      assert.ok(first?.includes(tip.sha))
+      const oldGraphMatch = await gitStore.loadCommitBatch(
+        'HEAD',
+        0,
+        oldest.summary,
+        true
+      )
+      assert.ok(oldGraphMatch?.includes(oldest.sha))
+      assert.ok(oldGraphMatch?.includes(tip.sha))
+    })
+
+    it('loads graph history in topological order, retaining unmatched merge parents', async t => {
+      const repo = await setupEmptyRepository(t)
+      for (const args of [
+        ['commit', '--allow-empty', '-m', 'base'],
+        ['checkout', '-b', 'graph-main'],
+        ['checkout', '-b', 'graph-topic'],
+        ['commit', '--allow-empty', '-m', 'topic'],
+        ['checkout', 'graph-main'],
+        ['commit', '--allow-empty', '-m', 'main'],
+        ['merge', '--no-ff', 'graph-topic', '-m', 'merge'],
+      ]) {
+        await git(args, repo.path, 'test')
+      }
+      const store = new GitStore(repo, shell, new TestStatsStore())
+      const shas = await store.loadCommitBatch('HEAD', 0, 'merge', true)
+      assert.ok(shas)
+      assert.strictEqual(shas.length, 4)
+      for (const [index, sha] of shas.entries()) {
+        const commit = store.commitLookup.get(sha)
+        assert.ok(commit)
+        assert.ok(
+          commit.parentSHAs.every(parent => shas.indexOf(parent) > index)
+        )
+      }
+    })
+
     it('searches history beyond the first page and shares overlapping requests', async t => {
       const path = await setupFixtureRepository(
         t,

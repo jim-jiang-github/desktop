@@ -20,7 +20,7 @@ import assert from 'assert'
 // https://github.com/git/git/blob/v2.37.3/cache.h#L62-L69
 const SubmoduleFileMode = '160000'
 
-/** Checks whether a commit matches a case-insensitive author or title search. */
+/** Match author, title, or description without including co-author trailers. */
 export function matchesCommitSearch(
   commit: Commit,
   searchText: string
@@ -30,7 +30,8 @@ export function matchesCommitSearch(
     query.length === 0 ||
     commit.author.name.toLowerCase().includes(query) ||
     commit.author.email.toLowerCase().includes(query) ||
-    commit.summary.toLowerCase().includes(query)
+    commit.summary.toLowerCase().includes(query) ||
+    commit.bodyNoCoAuthors.toLowerCase().includes(query)
   )
 }
 

@@ -1757,4 +1757,11 @@ export class List extends React.Component<IListProps, IListState> {
       }
     }
   }
+
+  /** Scrolls the list to a row without moving keyboard focus. */
+  public scrollToRow(row: number) {
+    if (row >= 0 && row < this.props.rowCount) {
+      this.scrollRowToVisible(row, false)
+    }
+  }
 }

@@ -294,6 +294,7 @@ describe('AppStore repository indicators', () => {
       branch,
       ComparisonMode.Ahead,
       'Alice',
+      true,
     ])
     const state = appStore['repositoryStateCache'].get(repository).compareState
     assert.strictEqual(state.formState.kind, HistoryTabMode.Compare)
@@ -346,9 +347,108 @@ describe('AppStore repository indicators', () => {
     assert.ok(finishPage)
     finishPage(['alice-second'])
     await pageRequest
-    assert.deepStrictEqual(load.mock.calls[0].arguments, ['HEAD', 1, 'Alice'])
+    assert.deepStrictEqual(load.mock.calls[0].arguments, [
+      'HEAD',
+      1,
+      'Alice',
+      true,
+    ])
     assert.deepStrictEqual(cache.get(repository).compareState.commitSHAs, [
       'bob-commit',
+    ])
+  })
+
+  it('selects a matching graph commit instead of an unrelated context row', async t => {
+    const { Commit } = await import('../../../src/models/commit')
+    const { CommitIdentity } = await import(
+      '../../../src/models/commit-identity'
+    )
+    const repository = new Repository(
+      'C:\\repositories\\graph-search',
+      24,
+      null,
+      false
+    )
+    const store = appStore['gitStoreCache'].get(repository)
+    const identity = new CommitIdentity(
+      'Alice',
+      'alice@example.com',
+      new Date(0)
+    )
+    for (const [sha, body] of [
+      ['context', ''],
+      ['match', 'Bluetooth reconnect'],
+    ]) {
+      store.commitLookup.set(
+        sha,
+        new Commit(sha, sha, 'Title', body, identity, identity, [], [], [])
+      )
+    }
+    appStore['repositoryStateCache'].updateCompareState(repository, () => ({
+      historySearchText: 'Bluetooth',
+      showCommitGraph: false,
+    }))
+    t.mock.method(store, 'loadCommitBatch', async () => ['context', 'match'])
+    const selection = t.mock.method(
+      appStore,
+      '_changeCommitSelection',
+      () => {}
+    )
+    t.mock.method(
+      appStore,
+      '_loadChangedFilesForCurrentSelection',
+      async () => {}
+    )
+    await appStore._setHistoryGraphEnabled(repository, true)
+    assert.deepStrictEqual(selection.mock.calls[0].arguments, [
+      repository,
+      ['match'],
+      true,
+    ])
+  })
+
+  it('discards pending list pages when graph mode changes', async t => {
+    const repository = new Repository(
+      'C:\\repositories\\graph-pages',
+      23,
+      null,
+      false
+    )
+    const gitStore = appStore['gitStoreCache'].get(repository)
+    const cache = appStore['repositoryStateCache']
+    cache.updateCompareState(repository, () => ({
+      commitSHAs: ['first'],
+      formState: { kind: HistoryTabMode.History },
+      showCommitGraph: false,
+    }))
+    let finishPage: ((commits: string[]) => void) | undefined
+    const load = t.mock.method(
+      gitStore,
+      'loadCommitBatch',
+      async (_ref: string, skip: number) => {
+        if (skip === 1) {
+          return new Promise<string[]>(resolve => {
+            finishPage = resolve
+          })
+        }
+        return ['graph-tip']
+      }
+    )
+    t.mock.method(appStore, '_changeCommitSelection', () => {})
+    t.mock.method(
+      appStore,
+      '_loadChangedFilesForCurrentSelection',
+      async () => {}
+    )
+    const pending = appStore._loadNextCommitBatch(repository)
+    await appStore._setHistoryGraphEnabled(repository, true)
+    assert.ok(finishPage)
+    finishPage(['stale-page'])
+    await pending
+    assert.deepStrictEqual(load.mock.calls[1].arguments, ['HEAD', 0, '', true])
+    assert.strictEqual(cache.get(repository).compareState.showCommitGraph, true)
+    assert.deepStrictEqual(cache.get(repository).compareState.commitSHAs, [
+      'graph-tip',
     ])
   })
 

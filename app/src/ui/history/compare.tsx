@@ -35,6 +35,9 @@ import { KeyboardInsertionData } from '../lib/list'
 import { Account } from '../../models/account'
 import { Emoji } from '../../lib/emoji'
 import { formatNumber } from '../../lib/format-number'
+import { Button } from '../lib/button'
+import { Octicon } from '../octicons'
+import { matchesCommitSearch } from '../../lib/git/log'
 
 interface ICompareSidebarProps {
   readonly repository: Repository
@@ -183,19 +186,47 @@ export class CompareSidebar extends React.Component<
         </div>
 
         <div className="history-author-filter">
+          <Button
+            className="history-graph-toggle"
+            size="small"
+            onClick={this.onGraphToggled}
+            ariaLabel={
+              this.props.compareState.showCommitGraph
+                ? 'Hide commit graph'
+                : 'Show commit graph'
+            }
+            tooltip={
+              this.props.compareState.showCommitGraph
+                ? 'Hide commit graph'
+                : 'Show commit graph'
+            }
+            ariaPressed={this.props.compareState.showCommitGraph}
+            disabled={this.props.isMultiCommitOperationInProgress === true}
+          >
+            <Octicon symbol={octicons.gitBranch} />
+          </Button>
           <TextBox
-            ariaLabel="Search commits by author or title"
-            placeholder="Search by author name, email, or title"
+            ariaLabel="Search commits by author, title, or description"
+            placeholder="Search author, title, or description"
             prefixedIcon={octicons.person}
             type="search"
-            displayClearButton={true}
             value={this.props.compareState.historySearchText}
             onValueChanged={this.onHistorySearchChanged}
             onSearchCleared={this.onHistorySearchCleared}
+            onKeyDown={this.onHistorySearchKeyDown}
             disabled={this.props.isMultiCommitOperationInProgress === true}
           />
+          {this.props.compareState.historySearchText.trim().length > 0 &&
+            this.renderSearchNavigation()}
         </div>
 
+        {this.props.compareState.showCommitGraph &&
+          this.props.compareState.historySearchText.trim().length > 0 && (
+            <div className="history-graph-search-note" role="status">
+              Matches are highlighted. Other commits remain visible to preserve
+              connections.
+            </div>
+          )}
         {showBranchList ? this.renderFilterList() : this.renderCommits()}
       </div>
     )
@@ -231,8 +262,10 @@ export class CompareSidebar extends React.Component<
   }
 
   private renderCommitList() {
-    const { formState, commitSHAs, historySearchText } = this.props.compareState
+    const { formState, commitSHAs, historySearchText, showCommitGraph } =
+      this.props.compareState
     const isHistorySearchActive = historySearchText.trim().length > 0
+    const disablePositionActions = isHistorySearchActive || showCommitGraph
 
     let emptyListMessage: string | JSX.Element
     if (isHistorySearchActive) {
@@ -275,7 +308,7 @@ export class CompareSidebar extends React.Component<
         }
         emoji={this.props.emoji}
         reorderingEnabled={
-          formState.kind === HistoryTabMode.History && !isHistorySearchActive
+          formState.kind === HistoryTabMode.History && !disablePositionActions
         }
         onViewCommitOnGitHub={this.props.onViewCommitOnGitHub}
         onUndoCommit={this.onUndoCommit}
@@ -304,10 +337,10 @@ export class CompareSidebar extends React.Component<
         onRenderCommitDragElement={this.onRenderCommitDragElement}
         onRemoveCommitDragElement={this.onRemoveCommitDragElement}
         disableReordering={
-          formState.kind === HistoryTabMode.Compare || isHistorySearchActive
+          formState.kind === HistoryTabMode.Compare || disablePositionActions
         }
         disableSquashing={
-          formState.kind === HistoryTabMode.Compare || isHistorySearchActive
+          formState.kind === HistoryTabMode.Compare || disablePositionActions
         }
         isMultiCommitOperationInProgress={
           this.props.isMultiCommitOperationInProgress
@@ -315,6 +348,10 @@ export class CompareSidebar extends React.Component<
         keyboardReorderData={this.state.keyboardReorderData}
         accounts={this.props.accounts}
         preferAbsoluteDates={this.props.preferAbsoluteDates}
+        showCommitGraph={showCommitGraph}
+        historySearchText={historySearchText}
+        branches={this.props.compareState.branches}
+        currentBranch={this.props.currentBranch}
       />
     )
   }
@@ -534,7 +571,8 @@ export class CompareSidebar extends React.Component<
       this.props.repository,
       commits.map(c => c.sha),
       isContiguous &&
-        (this.props.compareState.historySearchText.trim().length === 0 ||
+        ((!this.props.compareState.showCommitGraph &&
+          this.props.compareState.historySearchText.trim().length === 0) ||
           commits.length <= 1)
     )
 
@@ -596,6 +634,120 @@ export class CompareSidebar extends React.Component<
 
   private onHistorySearchCleared = () => {
     this.onHistorySearchChanged('')
+  }
+
+  private getHistorySearchResults(): ReadonlyArray<string> {
+    const { commitSHAs, historySearchText } = this.props.compareState
+    if (historySearchText.trim().length === 0) {
+      return []
+    }
+
+    return commitSHAs.filter(sha => {
+      const commit = this.props.commitLookup.get(sha)
+      return (
+        commit !== undefined && matchesCommitSearch(commit, historySearchText)
+      )
+    })
+  }
+
+  private renderSearchNavigation() {
+    const results = this.getHistorySearchResults()
+    const selectedIndex = results.indexOf(
+      this.props.selectedCommitShas[0] ?? ''
+    )
+    const disabled = this.props.isMultiCommitOperationInProgress === true
+
+    return (
+      <div className="history-search-navigation">
+        <span aria-live="polite">
+          {`${selectedIndex === -1 ? 0 : selectedIndex + 1} of ${
+            results.length
+          }`}
+        </span>
+        <Button
+          ariaLabel="Previous matching commit"
+          className="history-search-navigation-button"
+          disabled={disabled || results.length === 0 || selectedIndex === 0}
+          onClick={this.onPreviousSearchResult}
+          size="small"
+          tooltip="Previous matching commit"
+        >
+          <Octicon symbol={octicons.chevronUp} />
+        </Button>
+        <Button
+          ariaLabel="Next matching commit"
+          className="history-search-navigation-button"
+          disabled={
+            disabled ||
+            results.length === 0 ||
+            selectedIndex === results.length - 1
+          }
+          onClick={this.onNextSearchResult}
+          size="small"
+          tooltip="Next matching commit"
+        >
+          <Octicon symbol={octicons.chevronDown} />
+        </Button>
+      </div>
+    )
+  }
+
+  private navigateSearchResults(direction: 'previous' | 'next'): boolean {
+    const results = this.getHistorySearchResults()
+    const selectedIndex = results.indexOf(
+      this.props.selectedCommitShas[0] ?? ''
+    )
+    const nextIndex =
+      selectedIndex === -1
+        ? direction === 'next'
+          ? 0
+          : results.length - 1
+        : selectedIndex + (direction === 'next' ? 1 : -1)
+
+    if (nextIndex < 0 || nextIndex >= results.length) {
+      return false
+    }
+
+    const sha = results[nextIndex]
+    const commit = this.props.commitLookup.get(sha)
+    if (commit === undefined) {
+      return false
+    }
+
+    this.onCommitsSelected([commit], true)
+    this.commitListRef.current?.scrollToRow(
+      this.props.compareState.commitSHAs.indexOf(sha)
+    )
+    return true
+  }
+
+  private onPreviousSearchResult = () => {
+    this.navigateSearchResults('previous')
+  }
+
+  private onNextSearchResult = () => {
+    this.navigateSearchResults('next')
+  }
+
+  private onHistorySearchKeyDown = (
+    event: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (event.key === 'ArrowUp' && this.navigateSearchResults('previous')) {
+      event.preventDefault()
+    } else if (
+      event.key === 'ArrowDown' &&
+      this.navigateSearchResults('next')
+    ) {
+      event.preventDefault()
+    }
+  }
+
+  private onGraphToggled = () => {
+    this.setState({ keyboardReorderData: undefined })
+    this.props.dispatcher.setHistoryGraphEnabled(
+      this.props.repository,
+      !this.props.compareState.showCommitGraph
+    )
   }
 
   private clearFilterState = () => {

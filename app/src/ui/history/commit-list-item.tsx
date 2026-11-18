@@ -26,6 +26,8 @@ import { Emoji } from '../../lib/emoji'
 import { enableAccessibleListToolTips } from '../../lib/feature-flag'
 import { TooltippedContent } from '../lib/tooltipped-content'
 import { formatDate } from '../../lib/format-date'
+import { ICommitGraphRow } from '../../lib/commit-graph'
+import { CommitGraph } from './commit-graph'
 
 interface ICommitProps {
   readonly gitHubRepository: GitHubRepository | null
@@ -48,7 +50,10 @@ interface ICommitProps {
   readonly disableSquashing?: boolean
   readonly unpushedIndicatorTitle?: string
   readonly accounts: ReadonlyArray<Account>
-  readonly preferAbsoluteDates?: boolean
+  readonly graphRow?: ICommitGraphRow
+  readonly graphLaneCount?: number
+  readonly graphRefs?: ReadonlyArray<string>
+  readonly isSearchContext?: boolean
 }
 
 interface ICommitListItemState {
@@ -146,18 +151,38 @@ export class CommitListItem extends React.PureComponent<
         ]}
       >
         <div
-          className="commit"
+          className={classNames('commit', {
+            'has-commit-graph': this.props.graphRow !== undefined,
+            'graph-search-context': this.props.isSearchContext,
+          })}
           onMouseEnter={this.onMouseEnter}
           onMouseLeave={this.onMouseLeave}
           onMouseUp={this.onMouseUp}
         >
-          <div className="info">
-            <RichText
-              className={summaryClassNames}
-              emoji={this.props.emoji}
-              text={commitSummary}
-              renderUrlsAsLinks={false}
+          {this.props.graphRow !== undefined && (
+            <CommitGraph
+              row={this.props.graphRow}
+              laneCount={this.props.graphLaneCount ?? 1}
             />
+          )}
+          <div className="info">
+            <div className="commit-title">
+              <RichText
+                className={summaryClassNames}
+                emoji={this.props.emoji}
+                text={commitSummary}
+                renderUrlsAsLinks={false}
+              />
+              {this.props.graphRefs?.map(ref => (
+                <TooltippedContent
+                  className="graph-ref"
+                  key={ref}
+                  tooltip={ref}
+                >
+                  {ref}
+                </TooltippedContent>
+              ))}
+            </div>
             <div className="description">
               <AvatarStack
                 users={this.state.avatarUsers}

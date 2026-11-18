@@ -30,6 +30,9 @@ import { formatDate } from '../../lib/format-date'
 import { Avatar } from '../lib/avatar'
 import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
+import { buildCommitGraph } from '../../lib/commit-graph'
+import { matchesCommitSearch } from '../../lib/git/log'
+import { Branch } from '../../models/branch'
 
 const RowHeight = 50
 
@@ -185,6 +188,10 @@ interface ICommitListProps {
 
   /** This will make the list semantics friendly to screen reader users in browse mode. */
   readonly isInformationalView?: boolean
+  readonly showCommitGraph?: boolean
+  readonly historySearchText?: string
+  readonly branches?: ReadonlyArray<Branch>
+  readonly currentBranch?: Branch | null
 }
 
 interface ICommitListState {
@@ -201,6 +208,15 @@ export class CommitList extends React.Component<
   ICommitListState
 > {
   private commitsHash = memoize(makeCommitsHash, arrayEquals)
+  private graphLayout = memoizeOne(
+    (shas: ReadonlyArray<string>, lookup: ReadonlyMap<string, Commit>) =>
+      buildCommitGraph(
+        shas.flatMap(sha => {
+          const commit = lookup.get(sha)
+          return commit === undefined ? [] : [commit]
+        })
+      )
+  )
   private commitIndexBySha = memoizeOne(
     (commitSHAs: ReadonlyArray<string>) =>
       new Map(commitSHAs.map((sha, index) => [sha, index]))
@@ -289,6 +305,20 @@ export class CommitList extends React.Component<
     const showUnpushedIndicator =
       (isLocal || unpushedTags.length > 0) &&
       this.props.isLocalRepository === false
+    const graph = this.props.showCommitGraph
+      ? this.graphLayout(this.props.commitSHAs, this.props.commitLookup)
+      : undefined
+    const currentBranch = this.props.currentBranch
+    const graphRefs = this.props.showCommitGraph
+      ? [
+          ...(currentBranch?.tip.sha === sha
+            ? [`HEAD → ${currentBranch.name}`]
+            : []),
+          ...(this.props.branches ?? [])
+            .filter(branch => branch.tip.sha === sha)
+            .map(branch => branch.name),
+        ]
+      : []
 
     return (
       <CommitListItem
@@ -311,6 +341,13 @@ export class CommitList extends React.Component<
         onRemoveDragElement={this.props.onRemoveCommitDragElement}
         disableSquashing={this.props.disableSquashing}
         accounts={this.props.accounts}
+        graphRow={graph?.rows.get(sha)}
+        graphLaneCount={graph?.laneCount}
+        graphRefs={graphRefs}
+        isSearchContext={
+          this.props.showCommitGraph === true &&
+          !matchesCommitSearch(commit, this.props.historySearchText ?? '')
+        }
       />
     )
   }
@@ -555,6 +592,11 @@ export class CommitList extends React.Component<
     this.listRef.current?.focus()
   }
 
+  /** Scrolls the list to a row without moving keyboard focus. */
+  public scrollToRow(row: number) {
+    this.listRef.current?.scrollToRow(row)
+  }
+
   public render() {
     const {
       commitSHAs,
@@ -618,6 +660,10 @@ export class CommitList extends React.Component<
             tagsToPush: this.props.tagsToPush,
             shasToHighlight: this.props.shasToHighlight,
             preferAbsoluteDates: this.props.preferAbsoluteDates,
+            showCommitGraph: this.props.showCommitGraph,
+            historySearchText: this.props.historySearchText,
+            branches: this.props.branches,
+            currentBranch: this.props.currentBranch,
           }}
           setScrollTop={this.props.compareListScrollTop}
           rowCustomClassNameMap={this.getRowCustomClassMap()}

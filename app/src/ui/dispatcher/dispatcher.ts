@@ -258,6 +258,14 @@ export class Dispatcher {
     return this.appStore._setHistorySearchText(repository, historySearchText)
   }
 
+  /** Toggle topological graph rendering in History. */
+  public setHistoryGraphEnabled(
+    repository: Repository,
+    enabled: boolean
+  ): Promise<void> {
+    return this.appStore._setHistoryGraphEnabled(repository, enabled)
+  }
+
   /** Load the changed files for the current history selection. */
   public loadChangedFilesForCurrentSelection(
     repository: Repository

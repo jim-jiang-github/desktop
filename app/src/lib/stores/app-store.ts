@@ -266,6 +266,7 @@ import {
   HookProgress,
   git,
   revertFileChanges,
+  matchesCommitSearch,
 } from '../git'
 import {
   installGlobalLFSFilters,
@@ -1785,6 +1786,26 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
+  private updateHistorySelection(
+    repository: Repository,
+    commitSHAs: ReadonlyArray<string>
+  ) {
+    const { showCommitGraph, historySearchText } =
+      this.repositoryStateCache.get(repository).compareState
+    const lookup = this.gitStoreCache.get(repository).commitLookup
+    const selectable =
+      showCommitGraph && historySearchText.trim().length > 0
+        ? commitSHAs.filter(sha => {
+            const commit = lookup.get(sha)
+            return (
+              commit !== undefined &&
+              matchesCommitSearch(commit, historySearchText)
+            )
+          })
+        : commitSHAs
+    this.updateOrSelectFirstCommit(repository, selectable)
+  }
+
   /** This shouldn't be called directly. See `Dispatcher`. */
   public async _initializeCompare(
     repository: Repository,
@@ -1839,7 +1860,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       version: requestVersion,
       action,
     })
-    const { historySearchText } =
+    const { historySearchText, showCommitGraph } =
       this.repositoryStateCache.get(repository).compareState
 
     if (action.kind === HistoryTabMode.History) {
@@ -1876,7 +1897,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
       const commits = await gitStore.loadCommitBatch(
         'HEAD',
         0,
-        historySearchText
+        historySearchText,
+        showCommitGraph
       )
 
       if (
@@ -1897,7 +1919,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
         filterText: '',
         showBranchList: false,
       }))
-      this.updateOrSelectFirstCommit(repository, commits)
+      this.updateHistorySelection(repository, commits)
 
       return this.emitUpdate()
     }
@@ -1920,7 +1942,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const compare = await gitStore.getCompareCommits(
       comparisonBranch,
       action.comparisonMode,
-      this.repositoryStateCache.get(repository).compareState.historySearchText
+      this.repositoryStateCache.get(repository).compareState.historySearchText,
+      this.repositoryStateCache.get(repository).compareState.showCommitGraph
     )
 
     this.statsStore.increment('branchComparisons')
@@ -1970,7 +1993,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.emitUpdate()
 
-    this.updateOrSelectFirstCommit(repository, commitSHAs)
+    this.updateHistorySelection(repository, commitSHAs)
 
     if (this.currentMergeTreePromise != null) {
       return this.currentMergeTreePromise
@@ -2044,6 +2067,30 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.repositoryStateCache.updateCompareState(repository, () => ({
       historySearchText,
+    }))
+    await this.refreshHistoryResults(repository)
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _setHistoryGraphEnabled(
+    repository: Repository,
+    showCommitGraph: boolean
+  ): Promise<void> {
+    if (
+      this.repositoryStateCache.get(repository).compareState.showCommitGraph ===
+      showCommitGraph
+    ) {
+      return
+    }
+    this.repositoryStateCache.updateCompareState(repository, () => ({
+      showCommitGraph,
+    }))
+    await this.refreshHistoryResults(repository)
+  }
+
+  private async refreshHistoryResults(repository: Repository): Promise<void> {
+    const { compareState } = this.repositoryStateCache.get(repository)
+    this.repositoryStateCache.updateCompareState(repository, () => ({
       commitSHAs: [],
       tip: null,
       shasToHighlight: [],
@@ -2063,7 +2110,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const gitStore = this.gitStoreCache.get(repository)
 
     const state = this.repositoryStateCache.get(repository)
-    const { formState, historySearchText } = state.compareState
+    const { formState, historySearchText, showCommitGraph } = state.compareState
     if (formState.kind === HistoryTabMode.History) {
       const commits = state.compareState.commitSHAs
 
@@ -2074,6 +2121,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       // Prioritize pulling from the local commits if the last one we pulled is local
       if (
         commits.length > 0 &&
+        !showCommitGraph &&
         historySearchText.trim().length === 0 &&
         tip.kind === TipState.Valid &&
         gitStore.localCommitSHAs.includes(commits[commits.length - 1])
@@ -2085,7 +2133,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
         newCommits = await gitStore.loadCommitBatch(
           'HEAD',
           commits.length,
-          historySearchText
+          historySearchText,
+          showCommitGraph
         )
       }
 
@@ -2098,6 +2147,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       if (
         currentState.commitSHAs !== commits ||
         currentState.historySearchText !== historySearchText ||
+        currentState.showCommitGraph !== showCommitGraph ||
         currentState.formState !== formState
       ) {
         return
@@ -2106,6 +2156,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.repositoryStateCache.updateCompareState(repository, () => ({
         commitSHAs: commits.concat(newCommits),
       }))
+      if (showCommitGraph && state.commitSelection.shas.length === 0) {
+        this.updateHistorySelection(repository, commits.concat(newCommits))
+      }
       this.emitUpdate()
     }
   }
